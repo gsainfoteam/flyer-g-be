@@ -1,23 +1,25 @@
-name: Build Container And Update Kubernetes Cluster (Dev)
+name: Update Kubernetes Cluster (Dev)
 
-# TODO(인프라팀 확인 후):
-#   1) 아래 push 트리거 주석 해제
-#   2) MANIFEST 경로를 실제 경로로 수정
-#   3) 레포 Settings > Secrets에 SSH_PRIVATE_KEY 등록
 on:
-  # push:
-  #   branches: [main]
+  push:
+    branches:
+      - main
+    paths:
+      - src/**
+      - drizzle/**
+      - Dockerfile
+      - package.json
+      - bun.lock
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
   REPOSITORY: ${{ github.repository }}
   IMAGE_TAG: dev${{ github.run_number }}
-  MANIFEST: infoteam/service/flyer-g/stg.yaml # ← 경로 확인 필요
 
 jobs:
   build:
-    name: Build Docker Image
+    name: Build docker Image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -27,8 +29,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # GHCR 로그인. GITHUB_TOKEN은 Actions가 자동으로 주는 값이라
-      # 우리가 따로 등록할 게 없다.
       - name: Login to the Container registry
         uses: docker/login-action@v3
         with:
@@ -47,10 +47,10 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push Docker image
+        id: push
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -58,16 +58,12 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
-    name: Update GitOps Repository
+    name: Update Git Repository
     needs: build
     runs-on: ubuntu-latest
-
     steps:
-      # 배포는 클러스터를 직접 건드리지 않고,
-      # gitops 레포의 매니페스트에서 image 태그만 바꿔 커밋한다.
-      # 클러스터의 ArgoCD가 그 변경을 감지해서 알아서 교체한다.
-      - name: Checkout GitOps Repository
-        uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v3
         with:
           repository: gsainfoteam/icarus-gitops
           ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -75,18 +71,11 @@ jobs:
 
       - name: Update Kubernetes Manifest
         run: |
-          echo "Updating image to: $REGISTRY/$REPOSITORY:$IMAGE_TAG"
-          sed -i "s|image: .*|image: $REGISTRY/$REPOSITORY:$IMAGE_TAG|g" "$MANIFEST"
-          git diff "$MANIFEST"
+          sed -i "s|tag:.*|tag: $IMAGE_TAG|g" infoteam/service/flyer-g/values.stg.yaml
 
       - name: Commit and Push
         run: |
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --global user.name "GitHub Actions"
-          git add "$MANIFEST"
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Update image $REPOSITORY:$IMAGE_TAG"
-            git push -u origin master
-          fi
+          git commit -am "Update image $REPOSITORY:$IMAGE_TAG"
+          git push -u origin master
