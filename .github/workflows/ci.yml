@@ -1,0 +1,37 @@
+name: CI
+
+# PR을 올리거나 main에 push될 때마다 자동으로 검사한다.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Lint & Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # npm ci: package-lock.json에 적힌 버전 그대로 설치한다.
+      # (npm install과 달리 버전이 멋대로 올라가지 않아서 CI에 적합)
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test

@@ -1,0 +1,22 @@
+# 로컬 개발용 Postgres.
+# 앱은 `npm run start:dev`로 직접 띄우고, DB만 도커로 돌리는 게 개발할 땐 제일 편하다.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: flyer-g-db
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: flyer
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
