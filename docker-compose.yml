@@ -5,7 +5,7 @@ services:
     image: postgres:16-alpine
     container_name: flyer-g-db
     ports:
-      - '5432:5432'
+      - '5434:5432'  # 5432, 5433은 다른 프로젝트가 사용 중
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres

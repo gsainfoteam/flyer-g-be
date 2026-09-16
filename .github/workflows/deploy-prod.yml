@@ -1,0 +1,92 @@
+name: Build Container And Update Kubernetes Cluster (Prod)
+
+# TODO(인프라팀 확인 후):
+#   1) 아래 push 트리거 주석 해제
+#   2) MANIFEST 경로를 실제 경로로 수정
+#   3) 레포 Settings > Secrets에 SSH_PRIVATE_KEY 등록
+on:
+  # push:
+  #   tags: [v*]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  REPOSITORY: ${{ github.repository }}
+  IMAGE_TAG: prod${{ github.run_number }}
+  MANIFEST: infoteam/service/flyer-g/prod.yaml # ← 경로 확인 필요
+
+jobs:
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # GHCR 로그인. GITHUB_TOKEN은 Actions가 자동으로 주는 값이라
+      # 우리가 따로 등록할 게 없다.
+      - name: Login to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) from the Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.REPOSITORY }}
+          tags: ${{ env.IMAGE_TAG }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Update GitOps Repository
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      # 배포는 클러스터를 직접 건드리지 않고,
+      # gitops 레포의 매니페스트에서 image 태그만 바꿔 커밋한다.
+      # 클러스터의 ArgoCD가 그 변경을 감지해서 알아서 교체한다.
+      - name: Checkout GitOps Repository
+        uses: actions/checkout@v4
+        with:
+          repository: gsainfoteam/icarus-gitops
+          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          fetch-depth: 0
+
+      - name: Update Kubernetes Manifest
+        run: |
+          echo "Updating image to: $REGISTRY/$REPOSITORY:$IMAGE_TAG"
+          sed -i "s|image: .*|image: $REGISTRY/$REPOSITORY:$IMAGE_TAG|g" "$MANIFEST"
+          git diff "$MANIFEST"
+
+      - name: Commit and Push
+        run: |
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions"
+          git add "$MANIFEST"
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update image $REPOSITORY:$IMAGE_TAG"
+            git push -u origin master
+          fi
