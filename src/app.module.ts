@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { validateEnv } from './config/env.js';
+import { DbModule } from './db/db.module.js';
 import { HealthModule } from './health/health.module.js';
 
 @Module({
@@ -11,6 +12,7 @@ import { HealthModule } from './health/health.module.js';
       isGlobal: true,
       validate: validateEnv,
     }),
+    DbModule,
     HealthModule,
   ],
   controllers: [AppController],

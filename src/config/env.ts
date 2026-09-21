@@ -3,12 +3,25 @@ import { z } from 'zod';
 /**
  * 앱이 뜨기 위해 반드시 있어야 하는 환경변수 목록.
  * 값이 없거나 형식이 틀리면 서버가 "시작 시점에" 죽는다.
- * (런타임 중간에 undefined로 터지는 것보다 훨씬 빨리 알아챌 수 있다)
+ *
+ * DB 접속 정보를 DATABASE_URL 한 줄이 아니라 6개로 쪼갠 이유:
+ * GitGuardian 같은 시크릿 탐지 도구가 postgresql://user:pass@host 형태를
+ * 유출로 오탐하기 때문. chatbot-be 등 인포팀 다른 프로젝트도 같은 방식이다.
  */
 const envSchema = z.object({
   NODE_ENV: z.enum(['local', 'dev', 'prod']).default('local'),
   PORT: z.coerce.number().int().positive().default(3000),
-  DATABASE_URL: z.string().min(1),
+
+  DB_HOST: z.string().min(1),
+  DB_PORT: z.coerce.number().int().positive().default(5432),
+  DB_USER: z.string().min(1),
+  DB_PASSWORD: z.string().min(1),
+  DB_NAME: z.string().min(1),
+  // 환경변수는 항상 문자열이라 'true'/'false' 문자열로 받아서 boolean으로 바꾼다.
+  DB_SSL: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 });
 
 export type Env = z.infer<typeof envSchema>;

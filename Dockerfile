@@ -28,12 +28,8 @@ COPY --from=install /temp/prod/node_modules node_modules
 COPY --from=build /app/dist dist
 COPY --from=build /app/package.json .
 
-# Drizzle을 붙이면 여기에 추가한다 (chatbot-be 참고):
-#   COPY --from=build /app/drizzle drizzle
-#   COPY --from=build /app/drizzle.config.ts .
-#   COPY --from=build /app/scripts scripts
-#   RUN chmod +x /app/scripts/start.sh
-#   CMD ["/app/scripts/start.sh"]   <- 마이그레이션 후 서버 시작
+# 마이그레이션 SQL. 앱이 시작될 때 src/db/db.module.ts가 이걸 읽어서 적용한다.
+COPY --from=build /app/drizzle drizzle
 
 EXPOSE 3000
 CMD ["bun", "run", "dist/main.js"]
