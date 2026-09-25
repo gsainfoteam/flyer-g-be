@@ -1,10 +1,12 @@
 import { Controller, Get } from '@nestjs/common';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
+import { Public } from '../auth/decorators/public.decorator.js';
 
 /**
  * ECS / 로드밸런서가 "이 컨테이너 살아있나?"를 확인하는 엔드포인트.
  * 200을 돌려주지 않으면 배포가 실패하고 컨테이너가 계속 재시작된다.
  */
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(private readonly health: HealthCheckService) {}

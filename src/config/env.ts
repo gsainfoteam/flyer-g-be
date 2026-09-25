@@ -22,6 +22,15 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+
+  // Infoteam IdP (OAuth 2.0 / OIDC). 클라이언트 정보는 IdP 콘솔에서 발급받는다.
+  IDP_URL: z.url().default('https://api.account.gistory.me'),
+  IDP_CLIENT_ID: z.string().min(1),
+  IDP_CLIENT_SECRET: z.string().min(1),
+
+  // 우리 서버가 자체 발급하는 access token(JWT) 서명 키와 만료 시간(초).
+  JWT_SECRET: z.string().min(32, 'JWT_SECRET은 32자 이상이어야 합니다'),
+  JWT_EXPIRES_IN: z.coerce.number().int().min(60).max(86400).default(3600),
 });
 
 export type Env = z.infer<typeof envSchema>;
