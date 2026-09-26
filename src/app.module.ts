@@ -10,6 +10,7 @@ import { validateEnv } from './config/env.js';
 import { DbModule } from './db/db.module.js';
 import { HealthModule } from './health/health.module.js';
 import { PolicyModule } from './policy/policy.module.js';
+import { ReviewsModule } from './reviews/reviews.module.js';
 import { SubmissionsModule } from './submissions/submissions.module.js';
 import { TargetGroupsModule } from './target-groups/target-groups.module.js';
 
@@ -28,6 +29,7 @@ import { TargetGroupsModule } from './target-groups/target-groups.module.js';
     TargetGroupsModule,
     AssetsModule,
     SubmissionsModule,
+    ReviewsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
