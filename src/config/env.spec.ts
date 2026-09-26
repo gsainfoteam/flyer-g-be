@@ -67,3 +67,15 @@ describe('validateEnv — S3', () => {
     expect(() => validateEnv(rest)).toThrow(new RegExp(key));
   });
 });
+
+describe('validateEnv — 스케줄러', () => {
+  it('기본은 켜져 있다', () => {
+    expect(validateEnv(base).SCHEDULER_ENABLED).toBe(true);
+  });
+
+  it("'false'면 끈다", () => {
+    expect(
+      validateEnv({ ...base, SCHEDULER_ENABLED: 'false' }).SCHEDULER_ENABLED,
+    ).toBe(false);
+  });
+});

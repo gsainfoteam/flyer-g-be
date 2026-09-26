@@ -45,6 +45,13 @@ const envSchema = z
     AWS_ACCESS_KEY_ID: z.string().min(1),
     AWS_SECRET_ACCESS_KEY: z.string().min(1),
 
+    // 주기 작업(상태 동기화, 정리)을 돌릴지. 파드가 여러 개여도 DB 잠금으로 한 곳에서만 돈다.
+    // e2e 테스트는 테스트가 만든 상태를 바꾸지 않도록 끈다.
+    SCHEDULER_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
+
     // 둘 다 설정하면 Swagger 문서(/docs)를 Basic Auth로 잠근다. 둘 다 비우면 공개.
     SWAGGER_USER: optionalString,
     SWAGGER_PASSWORD: optionalString,
