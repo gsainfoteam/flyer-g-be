@@ -7,6 +7,7 @@ import { CommonModule } from './common/common.module.js';
 import { validateEnv } from './config/env.js';
 import { DbModule } from './db/db.module.js';
 import { HealthModule } from './health/health.module.js';
+import { PolicyModule } from './policy/policy.module.js';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { HealthModule } from './health/health.module.js';
     CommonModule,
     HealthModule,
     AuthModule,
+    PolicyModule,
   ],
   controllers: [AppController],
   providers: [AppService],
