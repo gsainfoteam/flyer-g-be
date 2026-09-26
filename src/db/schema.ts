@@ -6,8 +6,12 @@
  * 그 SQL은 앱이 시작될 때 자동으로 실행된다(src/db/db.module.ts 참고).
  */
 
+import { sql } from 'drizzle-orm';
 import {
+  boolean,
+  check,
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -58,6 +62,60 @@ export const userRoles = pgTable(
       .defaultNow(),
   },
   (table) => [primaryKey({ columns: [table.userId, table.role] })],
+);
+
+/**
+ * 관리 화면 없이 DB에 직접 넣는 참조 데이터(카테고리·대상 그룹)는
+ * 사람이 읽을 수 있는 slug를 ID로 쓴다. 예: performance, grp_house_a
+ */
+const SLUG_PATTERN = '^[a-z][a-z0-9_]{0,63}$';
+
+/** 게시물 분류. 신청 폼의 선택지이자 TV에 표시되는 분류명이다. */
+export const categories = pgTable(
+  'categories',
+  {
+    id: varchar('id', { length: 64 }).primaryKey(),
+    name: varchar('name', { length: 50 }).notNull(),
+    // 오름차순으로 노출한다.
+    sortOrder: integer('sort_order').notNull().default(0),
+    // 이미 쓰인 카테고리는 지우지 않고 숨긴다. 기존 신청은 그대로 이 카테고리를 가리킨다.
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      'categories_id_format',
+      sql`${table.id} ~ ${sql.raw(`'${SLUG_PATTERN}'`)}`,
+    ),
+  ],
+);
+
+/** 게시 대상 위치 묶음(예: 학사기숙사 A동). 기기와 신청이 그룹을 가리킨다. */
+export const targetGroups = pgTable(
+  'target_groups',
+  {
+    id: varchar('id', { length: 64 }).primaryKey(),
+    name: varchar('name', { length: 100 }).notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      'target_groups_id_format',
+      sql`${table.id} ~ ${sql.raw(`'${SLUG_PATTERN}'`)}`,
+    ),
+  ],
 );
 
 export const idempotencyStatusEnum = pgEnum('idempotency_status', [
