@@ -253,6 +253,8 @@ function toDto(device: Device, groupIds: string[], now: Date): DeviceDto {
         : null,
     lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
     appVersion: device.appVersion,
+    lastPlaylistVersion: device.lastPlaylistVersion,
+    lastRenderOkAt: device.lastRenderOkAt?.toISOString() ?? null,
     status: statusOf(device, now),
     layout: { type: device.layout, rotationSeconds: device.rotationSeconds },
     refreshAfterSeconds: device.refreshAfterSeconds,

@@ -8,6 +8,7 @@ import { CategoriesModule } from './categories/categories.module.js';
 import { CommonModule } from './common/common.module.js';
 import { validateEnv } from './config/env.js';
 import { DbModule } from './db/db.module.js';
+import { DeviceTelemetryModule } from './device-telemetry/device-telemetry.module.js';
 import { DevicesModule } from './devices/devices.module.js';
 import { HealthModule } from './health/health.module.js';
 import { PlaylistModule } from './playlist/playlist.module.js';
@@ -34,6 +35,7 @@ import { TargetGroupsModule } from './target-groups/target-groups.module.js';
     ReviewsModule,
     DevicesModule,
     PlaylistModule,
+    DeviceTelemetryModule,
   ],
   controllers: [AppController],
   providers: [AppService],
