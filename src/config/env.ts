@@ -1,10 +1,43 @@
 import { z } from 'zod';
 
 /** `KEY=`처럼 빈 값으로 둔 선택 항목은 설정하지 않은 것으로 본다. */
-const optionalString = z.preprocess(
-  (v) => (v === '' ? undefined : v),
-  z.string().optional(),
-);
+const unsetIfEmpty = (v: unknown) => (v === '' ? undefined : v);
+
+const optionalString = z.preprocess(unsetIfEmpty, z.string().optional());
+
+/**
+ * 쉼표로 구분한 origin 목록. 각 값은 경로 없이 scheme://host[:port] 형태여야 한다.
+ * URL로 정규화해 두어야 요청의 Origin 헤더와 정확히 비교할 수 있다.
+ */
+const originList = z
+  .string()
+  .transform((v) =>
+    v
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  )
+  .pipe(
+    z.array(
+      z
+        .string()
+        .refine(
+          (origin) => {
+            try {
+              const url = new URL(origin);
+              return (
+                ['http:', 'https:'].includes(url.protocol) &&
+                url.origin === origin.replace(/\/$/, '').toLowerCase()
+              );
+            } catch {
+              return false;
+            }
+          },
+          { message: 'origin은 경로 없이 https://host[:port] 형태로 적는다' },
+        )
+        .transform((origin) => new URL(origin).origin),
+    ),
+  );
 
 /**
  * 앱이 뜨기 위해 반드시 있어야 하는 환경변수 목록.
@@ -44,6 +77,10 @@ const envSchema = z
     AWS_S3_BUCKET: z.string().min(1),
     AWS_ACCESS_KEY_ID: z.string().min(1),
     AWS_SECRET_ACCESS_KEY: z.string().min(1),
+
+    // 브라우저에서 API를 부를 수 있는 프론트 주소 (ziggle-be와 같은 이름). 비우면 CORS를 켜지 않아
+    // 다른 도메인의 프론트는 API를 부를 수 없다.
+    CORS_ALLOWED_ORIGINS: z.preprocess(unsetIfEmpty, originList.default([])),
 
     // 주기 작업(상태 동기화, 정리)을 돌릴지. 파드가 여러 개여도 DB 잠금으로 한 곳에서만 돈다.
     // e2e 테스트는 테스트가 만든 상태를 바꾸지 않도록 끈다.

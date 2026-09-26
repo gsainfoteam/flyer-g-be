@@ -79,3 +79,33 @@ describe('validateEnv — 스케줄러', () => {
     ).toBe(false);
   });
 });
+
+describe('validateEnv — CORS', () => {
+  it('비우면 허용 origin이 없다', () => {
+    expect(validateEnv(base).CORS_ALLOWED_ORIGINS).toEqual([]);
+    expect(
+      validateEnv({ ...base, CORS_ALLOWED_ORIGINS: '' }).CORS_ALLOWED_ORIGINS,
+    ).toEqual([]);
+  });
+
+  it('쉼표로 나누고 공백·끝의 /를 정리한다', () => {
+    expect(
+      validateEnv({
+        ...base,
+        CORS_ALLOWED_ORIGINS:
+          ' https://stg.flyer-g.gistory.me/ , http://localhost:5173 ',
+      }).CORS_ALLOWED_ORIGINS,
+    ).toEqual(['https://stg.flyer-g.gistory.me', 'http://localhost:5173']);
+  });
+
+  it.each([
+    ['경로가 붙은 값', 'https://flyer-g.gistory.me/app'],
+    ['scheme 없는 값', 'flyer-g.gistory.me'],
+    ['http(s)가 아닌 값', 'ftp://flyer-g.gistory.me'],
+    ['와일드카드', '*'],
+  ])('%s은 시작 시점에 거절한다', (_, value) => {
+    expect(() => validateEnv({ ...base, CORS_ALLOWED_ORIGINS: value })).toThrow(
+      /CORS_ALLOWED_ORIGINS/,
+    );
+  });
+});
