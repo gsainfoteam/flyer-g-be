@@ -1,9 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, lt, sql } from 'drizzle-orm';
-import { uploadKey, variantKey } from '../assets/assets.service.js';
-import { VARIANTS, type VariantName } from '../assets/image-processor.js';
+import { and, asc, eq, lt, sql } from 'drizzle-orm';
+import { uploadKey, variantKeysOf } from '../assets/assets.service.js';
 import { DB_CONNECTION, type Database, type Transaction } from '../db/index.js';
-import { assets, submissions, type Asset } from '../db/schema.js';
+import {
+  assets,
+  storageDeletions,
+  submissions,
+  type Asset,
+} from '../db/schema.js';
+import { enqueueStorageDeletions } from '../storage/storage-deletions.js';
 import { StorageService } from '../storage/storage.service.js';
 import { JobLock, withJobLock } from './job-lock.js';
 
@@ -15,11 +20,17 @@ const UNUSED_READY_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
 const REJECTED_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
 // 한 번에 너무 오래 잠금을 잡지 않도록 나눠 지운다. 남은 것은 다음 실행에서 지운다.
 const BATCH = 100;
+// 한 번에 처리할 파일 삭제 수. 실패해서 쌓인 것도 여기서 다시 시도한다.
+const DELETION_BATCH = 500;
 
 export type AssetCleanupResult = {
   pending: number;
   unused: number;
   rejected: number;
+  /** 저장소에서 지운 파일 수 (이전 실행에서 실패해 남은 것 포함) */
+  filesDeleted: number;
+  /** 삭제에 실패해 다음 실행에서 다시 시도할 파일 수 */
+  filesFailed: number;
 };
 
 /**
@@ -28,6 +39,10 @@ export type AssetCleanupResult = {
  * - 올렸지만 어떤 신청도 쓰지 않는 것: 행과 변형 이미지(assets/)를 지운다
  * - 거절된 것: 행만 지운다
  * 신청이 가리키는 asset은 FK 때문에 지워지지 않는다.
+ *
+ * 파일은 행과 같은 트랜잭션에서 삭제 대기열(storage_deletions)에 기록하고, 삭제에 성공해야 대기열에서 뺀다.
+ * 저장소 장애로 삭제가 실패해도 키가 남아 다음 실행에서 다시 시도한다. 업로드 완료·거절 처리에서
+ * 원본 삭제가 실패한 것도 같은 대기열로 들어온다(src/assets/assets.service.ts).
  */
 @Injectable()
 export class AssetCleanupJob {
@@ -39,12 +54,11 @@ export class AssetCleanupJob {
   ) {}
 
   async run(now = new Date()): Promise<AssetCleanupResult | null> {
-    // 행을 먼저 지우고(커밋) 파일은 그 뒤에 지운다. 반대 순서면 롤백될 때 행만 남고 파일이 사라진다.
     const removed = await withJobLock(
       this.db,
       JobLock.ASSET_CLEANUP,
-      async (tx) => ({
-        pending: await this.remove(
+      async (tx) => {
+        const pending = await this.remove(
           tx,
           and(
             eq(assets.status, 'PENDING_UPLOAD'),
@@ -53,8 +67,8 @@ export class AssetCleanupJob {
               new Date(now.getTime() - PENDING_GRACE_MS),
             ),
           ),
-        ),
-        unused: await this.remove(
+        );
+        const unused = await this.remove(
           tx,
           and(
             eq(assets.status, 'READY'),
@@ -63,40 +77,83 @@ export class AssetCleanupJob {
               new Date(now.getTime() - UNUSED_READY_AFTER_MS),
             ),
           ),
-        ),
-        rejected: await this.remove(
+        );
+        const rejected = await this.remove(
           tx,
           and(
             eq(assets.status, 'REJECTED'),
             lt(assets.createdAt, new Date(now.getTime() - REJECTED_KEEP_MS)),
           ),
-        ),
-      }),
+        );
+
+        // 행 삭제와 함께 커밋된다. 롤백되면 행도 키도 그대로 남는다.
+        await enqueueStorageDeletions(
+          tx,
+          [
+            ...pending.map((asset) => uploadKey(asset.id)),
+            ...unused.flatMap((asset) => variantKeysOf(asset.id)),
+          ],
+          now,
+        );
+        return {
+          pending: pending.length,
+          unused: unused.length,
+          rejected: rejected.length,
+        };
+      },
     );
     if (!removed) {
       return null;
     }
 
-    const keys = [
-      ...removed.pending.map((asset) => uploadKey(asset.id)),
-      ...removed.unused.flatMap((asset) =>
-        (Object.keys(VARIANTS) as VariantName[]).map((variant) =>
-          variantKey(asset.id, variant),
-        ),
-      ),
-    ];
-    for (const key of keys) {
-      // 파일 삭제에 실패해도 행은 이미 없다. 로그로 남기고 계속한다.
-      await this.storage.delete(key).catch((error: unknown) => {
-        this.logger.error(`Failed to delete ${key}`, error);
-      });
-    }
+    const files = await this.drainStorageDeletions(now);
+    return { ...removed, ...files };
+  }
 
-    return {
-      pending: removed.pending.length,
-      unused: removed.unused.length,
-      rejected: removed.rejected.length,
-    };
+  /**
+   * 삭제 대기열의 파일을 지운다. 성공한 키만 대기열에서 빼고, 실패한 키는 시도 횟수와 오류를 남겨
+   * 다음 실행에서 다시 시도한다. 없는 파일을 지워도 성공이라 여러 번 시도해도 안전하다.
+   */
+  private async drainStorageDeletions(
+    now: Date,
+  ): Promise<{ filesDeleted: number; filesFailed: number }> {
+    const drained = await withJobLock(
+      this.db,
+      JobLock.ASSET_CLEANUP,
+      async (tx) => {
+        const queued = await tx
+          .select({ key: storageDeletions.key })
+          .from(storageDeletions)
+          .orderBy(asc(storageDeletions.createdAt))
+          .limit(DELETION_BATCH);
+
+        let filesDeleted = 0;
+        let filesFailed = 0;
+        for (const { key } of queued) {
+          try {
+            await this.storage.delete(key);
+            await tx
+              .delete(storageDeletions)
+              .where(eq(storageDeletions.key, key));
+            filesDeleted += 1;
+          } catch (error) {
+            filesFailed += 1;
+            this.logger.warn(`Failed to delete ${key}; will retry`, error);
+            await tx
+              .update(storageDeletions)
+              .set({
+                attempts: sql`${storageDeletions.attempts} + 1`,
+                lastError: String(error).slice(0, 500),
+                lastAttemptAt: now,
+              })
+              .where(eq(storageDeletions.key, key));
+          }
+        }
+        return { filesDeleted, filesFailed };
+      },
+    );
+    // 다른 파드가 대기열을 처리 중이면 이번에는 넘긴다.
+    return drained ?? { filesDeleted: 0, filesFailed: 0 };
   }
 
   /** 어떤 신청도 가리키지 않는 asset만 지운다. */

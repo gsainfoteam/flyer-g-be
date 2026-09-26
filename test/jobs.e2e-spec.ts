@@ -3,13 +3,18 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { AppModule } from '../src/app.module.js';
-import { uploadKey, variantKey } from '../src/assets/assets.service.js';
+import {
+  uploadKey,
+  variantKey,
+  variantKeysOf,
+} from '../src/assets/assets.service.js';
 import { IdempotencyService } from '../src/common/idempotency/idempotency.service.js';
 import { DB_CONNECTION, type Database } from '../src/db/index.js';
 import {
   assets,
   auditLogs,
   idempotencyKeys,
+  storageDeletions,
   submissions,
   type SubmissionStatus,
 } from '../src/db/schema.js';
@@ -291,6 +296,54 @@ describe('주기 작업 (e2e)', () => {
       expect(storage.objects.has(uploadKey(pendingExpired))).toBe(false);
       expect(storage.objects.has(variantKey(unusedOld, 'tv'))).toBe(false);
       expect(storage.objects.has(variantKey(usedOld, 'tv'))).toBe(true);
+      expect(result!.filesFailed).toBe(0);
+      expect(await queued([uploadKey(pendingExpired)])).toEqual([]);
+    });
+
+    const queued = async (keys: string[]) =>
+      db
+        .select()
+        .from(storageDeletions)
+        .where(inArray(storageDeletions.key, keys));
+
+    it('파일 삭제가 실패하면 대기열에 남겨 다음 실행에서 다시 지운다', async () => {
+      const unused = await insertAsset({ status: 'READY', ageMs: 4 * DAY });
+      const tvKey = variantKey(unused, 'tv');
+      for (const variant of ['thumb', 'preview', 'tv'] as const) {
+        storage.upload(variantKey(unused, variant), Buffer.from('v'));
+      }
+      storage.failDeletes.add(tvKey);
+
+      const first = await assetJob.run();
+      // 행은 지워졌지만 실패한 파일의 키는 남았다
+      expect(await exists(unused)).toBe(false);
+      expect(storage.objects.has(tvKey)).toBe(true);
+      expect(storage.objects.has(variantKey(unused, 'thumb'))).toBe(false);
+      expect(first!.filesFailed).toBe(1);
+      const [pending] = await queued([tvKey]);
+      expect(pending).toMatchObject({ key: tvKey, attempts: 1 });
+      expect(pending.lastError).toContain('simulated storage failure');
+
+      // 저장소가 복구되면 다음 실행이 지운다
+      storage.failDeletes.delete(tvKey);
+      const second = await assetJob.run();
+      expect(storage.objects.has(tvKey)).toBe(false);
+      expect(second!.filesDeleted).toBeGreaterThanOrEqual(1);
+      expect(await queued([tvKey])).toEqual([]);
+    });
+
+    it('잠금을 얻지 못하면 행도 대기열도 건드리지 않는다', async () => {
+      const unused = await insertAsset({ status: 'READY', ageMs: 4 * DAY });
+      // 잠금을 다른 곳이 잡고 있으면 아무것도 지우거나 기록하지 않는다
+      await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(1179207270::int, 2::int)`,
+        );
+        expect(await assetJob.run()).toBeNull();
+      });
+      expect(await exists(unused)).toBe(true);
+      expect(await queued(variantKeysOf(unused))).toEqual([]);
+      await db.delete(assets).where(eq(assets.id, unused));
     });
   });
 

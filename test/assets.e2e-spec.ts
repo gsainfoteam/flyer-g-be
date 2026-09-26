@@ -1,12 +1,12 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import sharp from 'sharp';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { sha256Checksum } from '../src/assets/image-processor.js';
 import { DB_CONNECTION, type Database } from '../src/db/index.js';
-import { assets } from '../src/db/schema.js';
+import { assets, storageDeletions } from '../src/db/schema.js';
 import { StorageService } from '../src/storage/storage.service.js';
 import { MemoryStorage } from './helpers/memory-storage.js';
 import { createTestUser, type TestUser } from './helpers/test-user.js';
@@ -234,6 +234,52 @@ describe('포스터 업로드 (e2e)', () => {
 
     it('형식이 틀린 ID는 404', async () => {
       await complete('not-a-uuid').expect(404);
+    });
+
+    const queuedKeys = async (keys: string[]) =>
+      (
+        await db
+          .select({ key: storageDeletions.key })
+          .from(storageDeletions)
+          .where(inArray(storageDeletions.key, keys))
+      ).map((row) => row.key);
+
+    it('원본 삭제가 실패해도 응답은 성공하고, 원본은 삭제 대기열에 들어간다', async () => {
+      const assetId = await uploaded(await poster(1200, 1600));
+      const original = `uploads/${assetId}`;
+      storage.failDeletes.add(original);
+      try {
+        await complete(assetId).expect(200);
+        expect(storage.objects.has(original)).toBe(true);
+        expect(await queuedKeys([original])).toEqual([original]);
+      } finally {
+        storage.failDeletes.delete(original);
+        await db
+          .delete(storageDeletions)
+          .where(eq(storageDeletions.key, original));
+      }
+    });
+
+    it('처리 도중 정리 작업이 행을 지우면 404이고, 방금 올린 변형 이미지는 삭제 대기열에 들어간다', async () => {
+      const assetId = await uploaded(await poster(1200, 1600));
+      const variantKeys = ['thumb', 'preview', 'tv'].map(
+        (variant) => `assets/${assetId}/${variant}.webp`,
+      );
+      storage.beforePut = async () => {
+        storage.beforePut = undefined;
+        await db.delete(assets).where(eq(assets.id, assetId));
+      };
+      try {
+        await complete(assetId).expect(404);
+        expect((await queuedKeys(variantKeys)).sort()).toEqual(
+          [...variantKeys].sort(),
+        );
+      } finally {
+        storage.beforePut = undefined;
+        await db
+          .delete(storageDeletions)
+          .where(inArray(storageDeletions.key, variantKeys));
+      }
     });
   });
 });

@@ -466,6 +466,18 @@ export const auditLogs = pgTable(
   ],
 );
 
+/**
+ * 지워야 하는 저장소 파일. DB 행 삭제와 같은 트랜잭션에서 기록하고, 파일 삭제에 성공해야 뺀다.
+ * 삭제가 실패해도 키가 남아 있어 정리 작업(src/jobs/asset-cleanup.job.ts)이 다시 시도한다.
+ */
+export const storageDeletions = pgTable('storage_deletions', {
+  key: varchar('key', { length: 1024 }).primaryKey(),
+  attempts: integer('attempts').notNull().default(0),
+  lastError: varchar('last_error', { length: 500 }),
+  lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+});
+
 export const idempotencyStatusEnum = pgEnum('idempotency_status', [
   'IN_PROGRESS',
   'COMPLETED',

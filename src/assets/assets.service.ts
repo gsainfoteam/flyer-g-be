@@ -8,6 +8,7 @@ import {
   SIGNAGE_POLICY,
   type AllowedMimeType,
 } from '../policy/signage-policy.js';
+import { enqueueStorageDeletions } from '../storage/storage-deletions.js';
 import { StorageService } from '../storage/storage.service.js';
 import type { AssetDto } from './dto/asset.dto.js';
 import type {
@@ -30,6 +31,10 @@ const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable';
 export const uploadKey = (assetId: string) => `uploads/${assetId}`;
 export const variantKey = (assetId: string, variant: VariantName) =>
   `assets/${assetId}/${variant}.webp`;
+export const variantKeysOf = (assetId: string) =>
+  (Object.keys(VARIANTS) as VariantName[]).map((variant) =>
+    variantKey(assetId, variant),
+  );
 
 /**
  * 포스터 업로드 (요구사항 4절, presign 방식)
@@ -171,8 +176,21 @@ export class AssetsService {
       .returning();
 
     await this.deleteOriginal(asset.id);
-    // 동시에 들어온 다른 완료 요청이 먼저 끝냈으면 그 결과를 준다.
-    return this.toDto(ready ?? (await this.findOwned(ownerId, assetId)));
+    if (ready) {
+      return this.toDto(ready);
+    }
+    // 처리하는 사이 행이 바뀌었다. 동시에 들어온 다른 완료 요청이 먼저 끝냈으면 그 결과를 준다.
+    const current = await this.findOwnedOrNull(ownerId, assetId);
+    if (current) {
+      return this.toDto(current);
+    }
+    // 정리 작업이 그 사이 행을 지웠다. 방금 올린 변형 이미지는 아무도 추적하지 않으므로 삭제 대기열에 넣는다.
+    await enqueueStorageDeletions(this.db, variantKeysOf(asset.id), new Date());
+    throw new AppException(
+      HttpStatus.NOT_FOUND,
+      ErrorCode.NOT_FOUND,
+      'Asset not found',
+    );
   }
 
   async findById(assetId: string): Promise<Asset | null> {
@@ -231,11 +249,18 @@ export class AssetsService {
     throw rejection(reason);
   }
 
-  /** 원본에는 EXIF 위치 정보가 있을 수 있어 처리 후 남기지 않는다. 실패해도 응답은 막지 않는다. */
+  /**
+   * 원본에는 EXIF 위치 정보가 있을 수 있어 처리 후 남기지 않는다. 실패해도 응답은 막지 않고,
+   * 삭제 대기열에 넣어 업로드 정리 작업이 다시 시도하게 한다.
+   */
   private async deleteOriginal(assetId: string): Promise<void> {
-    await this.storage.delete(uploadKey(assetId)).catch((error: unknown) => {
-      this.logger.error(`Failed to delete original upload ${assetId}`, error);
-    });
+    const key = uploadKey(assetId);
+    try {
+      await this.storage.delete(key);
+    } catch (error) {
+      this.logger.warn(`Failed to delete ${key}; queued for retry`, error);
+      await enqueueStorageDeletions(this.db, [key], new Date());
+    }
   }
 
   private toDto(asset: Asset): AssetDto {
