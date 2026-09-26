@@ -8,7 +8,7 @@ export class TargetGroupDto {
   name: string;
 
   @ApiProperty({
-    description: '그룹에 속한 기기 수. 기기 등록 기능이 생기기 전까지 0',
+    description: '그룹에 속한 활성 기기 수 (비활성 기기는 세지 않는다)',
     example: 2,
   })
   deviceCount: number;

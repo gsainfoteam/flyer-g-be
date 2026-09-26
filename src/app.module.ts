@@ -8,6 +8,7 @@ import { CategoriesModule } from './categories/categories.module.js';
 import { CommonModule } from './common/common.module.js';
 import { validateEnv } from './config/env.js';
 import { DbModule } from './db/db.module.js';
+import { DevicesModule } from './devices/devices.module.js';
 import { HealthModule } from './health/health.module.js';
 import { PolicyModule } from './policy/policy.module.js';
 import { ReviewsModule } from './reviews/reviews.module.js';
@@ -30,6 +31,7 @@ import { TargetGroupsModule } from './target-groups/target-groups.module.js';
     AssetsModule,
     SubmissionsModule,
     ReviewsModule,
+    DevicesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
