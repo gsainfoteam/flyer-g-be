@@ -68,6 +68,24 @@ export class DeviceDto {
 
   @ApiProperty({
     description:
+      '기기가 heartbeat로 알린, 지금 재생 중인 편성 버전. 편성 API의 최신 playlistVersion과 다르면 동기화가 밀린 것이다',
+    type: String,
+    nullable: true,
+    example: '9f2b5c0e3a1d4f6b',
+  })
+  lastPlaylistVersion: string | null;
+
+  @ApiProperty({
+    description:
+      '기기가 마지막으로 포스터를 정상 렌더링한 시각(기기 시계 기준)',
+    type: String,
+    nullable: true,
+    example: '2026-07-29T06:29:50.000Z',
+  })
+  lastRenderOkAt: string | null;
+
+  @ApiProperty({
+    description:
       'DISABLED: 비활성. ONLINE: 3분 안에 heartbeat가 옴. OFFLINE: 그 외(한 번도 안 온 경우 포함)',
     enum: DEVICE_STATUSES,
     example: 'ONLINE',
