@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { DB_CONNECTION, type Database } from '../db/index.js';
 import { categories } from '../db/schema.js';
 
@@ -14,5 +14,14 @@ export class CategoriesService {
       .from(categories)
       .where(eq(categories.isActive, true))
       .orderBy(asc(categories.sortOrder), asc(categories.id));
+  }
+
+  /** 신청에 쓸 수 있는 카테고리인가 (숨긴 카테고리는 새 신청에 쓸 수 없다) */
+  async isActive(id: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: categories.id })
+      .from(categories)
+      .where(and(eq(categories.id, id), eq(categories.isActive, true)));
+    return row !== undefined;
   }
 }

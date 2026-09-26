@@ -12,6 +12,8 @@ export const ErrorCode = {
   VALIDATION_FAILED: 'VALIDATION_FAILED',
   RATE_LIMITED: 'RATE_LIMITED',
   SERVER_ERROR: 'SERVER_ERROR',
+  /** 같은 Ziggle 공지로 이미 신청했다 (공지 하나에 신청 하나) */
+  ALREADY_SUBMITTED: 'ALREADY_SUBMITTED',
   /** 같은 Idempotency-Key를 다른 요청 내용으로 다시 보냈다 */
   IDEMPOTENCY_KEY_REUSED: 'IDEMPOTENCY_KEY_REUSED',
 } as const;
