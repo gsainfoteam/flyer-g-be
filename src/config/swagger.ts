@@ -8,6 +8,8 @@ import type { Env } from './env.js';
 export const SWAGGER_PATH = 'docs';
 /** @ApiBearerAuth(BEARER_AUTH)로 참조하는 보안 스키마 이름 */
 export const BEARER_AUTH = 'bearerAuth';
+/** TV 기기 토큰 보안 스키마 이름 (src/devices/auth/device-auth.ts) */
+export const DEVICE_TOKEN_AUTH = 'deviceToken';
 
 /**
  * Swagger UI는 /docs, OpenAPI JSON은 /docs-json 에서 제공한다.
@@ -40,6 +42,15 @@ export function setupSwagger(app: INestApplication): void {
           description: 'POST /auth/login 으로 발급받은 accessToken',
         },
         BEARER_AUTH,
+      )
+      .addApiKey(
+        {
+          type: 'apiKey',
+          in: 'header',
+          name: 'X-Device-Token',
+          description: 'TV 기기 토큰. 관리자가 기기를 등록·재발급할 때 받는다',
+        },
+        DEVICE_TOKEN_AUTH,
       )
       .build(),
   );
