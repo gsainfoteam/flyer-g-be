@@ -1,8 +1,20 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { and, count, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  ne,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import { z } from 'zod';
 import { AssetsService } from '../assets/assets.service.js';
+import { AuditService } from '../audit/audit.service.js';
 import type { AuthUser } from '../auth/types/auth-user.js';
+import { isReviewer } from '../auth/types/role.js';
 import { CategoriesService } from '../categories/categories.service.js';
 import {
   AppException,
@@ -12,12 +24,13 @@ import { ErrorCode } from '../common/errors/error-code.js';
 import { validationFailed } from '../common/errors/validation.js';
 import { decodeCursor } from '../common/pagination/cursor.js';
 import { toPage, type Page } from '../common/pagination/page.js';
-import { DB_CONNECTION, type Database } from '../db/index.js';
+import { DB_CONNECTION, type Database, type Transaction } from '../db/index.js';
 import {
   categories,
   submissionStatusEnum,
   submissionTargetGroups,
   submissions,
+  users,
   type Submission,
   type SubmissionStatus,
 } from '../db/schema.js';
@@ -28,6 +41,7 @@ import type {
 } from './dto/submission-input.dto.js';
 import type {
   ListSubmissionsQueryDto,
+  ReviewQueueQueryDto,
   SubmissionScope,
 } from './dto/submission-query.dto.js';
 import type {
@@ -45,10 +59,16 @@ import {
   validateSchedule,
 } from './submission-rules.js';
 
-type SubmissionRow = Submission & { categoryName: string };
+export type SubmissionRow = Submission & {
+  categoryName: string;
+  requesterName: string;
+};
 
 const ACTIVE_NOTICE_INDEX = 'submissions_ziggle_notice_id_active_uq';
 const cursorSchema = z.tuple([z.iso.datetime(), z.uuid()]);
+
+/** 검토 대기열 정렬 기준. 모든 신청은 만들 때 submittedAt이 채워지지만 안전하게 createdAt으로 보완한다. */
+const waitingSince = sql<Date>`coalesce(${submissions.submittedAt}, ${submissions.createdAt})`;
 
 @Injectable()
 export class SubmissionsService {
@@ -57,6 +77,7 @@ export class SubmissionsService {
     private readonly assetsService: AssetsService,
     private readonly categoriesService: CategoriesService,
     private readonly targetGroupsService: TargetGroupsService,
+    private readonly auditService: AuditService,
   ) {}
 
   /** 생성과 제출을 한 번에 한다. 만들어지면 바로 검토 대기다. */
@@ -113,6 +134,12 @@ export class SubmissionsService {
             })),
           );
         }
+        await this.auditService.record(tx, {
+          actor: { type: 'USER', id: user.id },
+          action: 'SUBMISSION_CREATED',
+          target: { type: 'SUBMISSION', id: row.id },
+          at: now,
+        });
         return row.id;
       }),
     );
@@ -219,7 +246,7 @@ export class SubmissionsService {
   /** 신청자 본인이나 검토자만 본다. 그 외에는 존재 여부도 알리지 않는다(404). */
   async findOne(user: AuthUser, id: string): Promise<SubmissionDetailDto> {
     const row = await this.findRow(id);
-    if (!row || (row.requesterId !== user.id && !isReviewer(user))) {
+    if (!row || (row.requesterId !== user.id && !isReviewer(user.roles))) {
       throw notFound();
     }
     return this.detail(id, new Date());
@@ -340,6 +367,20 @@ export class SubmissionsService {
             );
           }
         }
+        await this.auditService.record(tx, {
+          actor: { type: 'USER', id: user.id },
+          action: 'SUBMISSION_UPDATED',
+          target: { type: 'SUBMISSION', id },
+          metadata: {
+            changedFields: [
+              ...Object.keys(changes),
+              ...(groupsChanged ? ['targetGroupIds'] : []),
+            ],
+            fromStatus: current.status,
+            toStatus: nextStatus,
+          },
+          at: now,
+        });
       }),
     );
 
@@ -362,7 +403,17 @@ export class SubmissionsService {
       throw validationFailed(errors);
     }
 
-    await this.transition(current, 'PENDING_REVIEW', now, { submittedAt: now });
+    await this.db.transaction(async (tx) => {
+      await this.applyTransition(tx, current, 'PENDING_REVIEW', now, {
+        submittedAt: now,
+      });
+      await this.auditService.record(tx, {
+        actor: { type: 'USER', id: user.id },
+        action: 'SUBMISSION_RESUBMITTED',
+        target: { type: 'SUBMISSION', id },
+        at: now,
+      });
+    });
     return this.detail(id, now);
   }
 
@@ -377,34 +428,90 @@ export class SubmissionsService {
       throw conflict(`Submission in ${current.status} cannot be canceled`);
     }
 
-    await this.transition(current, 'CANCELED', now);
+    await this.db.transaction(async (tx) => {
+      await this.applyTransition(tx, current, 'CANCELED', now);
+      await this.auditService.record(tx, {
+        actor: { type: 'USER', id: user.id },
+        action: 'SUBMISSION_CANCELED',
+        target: { type: 'SUBMISSION', id },
+        metadata: { fromStatus: current.status },
+        at: now,
+      });
+    });
     return this.detail(id, now);
   }
 
-  // ---------------------------------------------------------------------------
+  /**
+   * 검토 대기열 (요구사항 6.1). 오래 기다린 순(검토 요청 시각 오름차순)이다.
+   * 권한 확인은 호출하는 쪽(검토 API)이 한다.
+   */
+  async listReviewQueue(
+    query: ReviewQueueQueryDto,
+  ): Promise<Page<SubmissionDto>> {
+    const now = new Date();
+    const filter = and(
+      eq(submissions.status, query.status),
+      query.categoryId
+        ? eq(submissions.categoryId, query.categoryId)
+        : undefined,
+    );
 
-  private async transition(
+    let pageFilter = filter;
+    if (query.cursor) {
+      const [since, id] = decodeCursor(query.cursor, cursorSchema);
+      pageFilter = and(
+        filter,
+        sql`(${waitingSince}, ${submissions.id}) > (${since}::timestamptz, ${id}::uuid)`,
+      );
+    }
+
+    const [rows, [{ total }]] = await Promise.all([
+      this.selectRows(pageFilter)
+        .orderBy(asc(waitingSince), asc(submissions.id))
+        .limit(query.limit + 1),
+      this.db.select({ total: count() }).from(submissions).where(filter),
+    ]);
+    const groupIds = await this.targetGroupIdsOf(rows.map((row) => row.id));
+
+    return toPage(rows, {
+      limit: query.limit,
+      totalCount: total,
+      serverTime: now,
+      cursorOf: (row) => [
+        (row.submittedAt ?? row.createdAt).toISOString(),
+        row.id,
+      ],
+      map: (row) => this.toDto(row, groupIds.get(row.id) ?? []),
+    });
+  }
+
+  /**
+   * version이 그대로일 때만 상태를 바꾼다. 그 사이 다른 요청이 먼저 바꿨으면 409.
+   * 검토 API도 이 메서드로 상태를 바꾸고, 같은 tx에서 검토 이력과 감사 로그를 쓴다.
+   */
+  async applyTransition(
+    tx: Transaction,
     current: Submission,
     status: SubmissionStatus,
     now: Date,
     extra: Partial<typeof submissions.$inferInsert> = {},
   ): Promise<void> {
-    const [updated] = await this.withNoticeGuard(() =>
-      this.db
-        .update(submissions)
-        .set({ ...extra, status, version: current.version + 1, updatedAt: now })
-        .where(
-          and(
-            eq(submissions.id, current.id),
-            eq(submissions.version, current.version),
-          ),
-        )
-        .returning({ id: submissions.id }),
-    );
+    const [updated] = await tx
+      .update(submissions)
+      .set({ ...extra, status, version: current.version + 1, updatedAt: now })
+      .where(
+        and(
+          eq(submissions.id, current.id),
+          eq(submissions.version, current.version),
+        ),
+      )
+      .returning({ id: submissions.id });
     if (!updated) {
       throw conflict('Submission was modified');
     }
   }
+
+  // ---------------------------------------------------------------------------
 
   /** 본인 신청을 찾고 version을 확인한다. 순서: 404 → 409 */
   private async findOwnRow(
@@ -422,7 +529,7 @@ export class SubmissionsService {
     return row;
   }
 
-  private async findRow(id: string): Promise<SubmissionRow | undefined> {
+  async findRow(id: string): Promise<SubmissionRow | undefined> {
     const [row] = await this.selectRows(eq(submissions.id, id));
     return row;
   }
@@ -450,9 +557,11 @@ export class SubmissionsService {
         createdAt: submissions.createdAt,
         updatedAt: submissions.updatedAt,
         categoryName: categories.name,
+        requesterName: users.name,
       })
       .from(submissions)
       .innerJoin(categories, eq(categories.id, submissions.categoryId))
+      .innerJoin(users, eq(users.id, submissions.requesterId))
       .where(where)
       .$dynamic();
   }
@@ -477,7 +586,7 @@ export class SubmissionsService {
     return result;
   }
 
-  private async detail(id: string, now: Date): Promise<SubmissionDetailDto> {
+  async detail(id: string, now: Date): Promise<SubmissionDetailDto> {
     const row = await this.findRow(id);
     if (!row) {
       throw notFound();
@@ -492,6 +601,7 @@ export class SubmissionsService {
       id: row.id,
       ziggleNoticeId: row.ziggleNoticeId,
       requesterId: row.requesterId,
+      requesterName: row.requesterName,
       type: 'POSTER',
       title: row.title,
       categoryId: row.categoryId,
@@ -579,7 +689,7 @@ export class SubmissionsService {
   }
 
   private assertScope(user: AuthUser, scope: SubmissionScope): void {
-    if (scope === 'all' && !isReviewer(user)) {
+    if (scope === 'all' && !isReviewer(user.roles)) {
       throw new AppException(
         HttpStatus.FORBIDDEN,
         ErrorCode.FORBIDDEN,
@@ -591,10 +701,6 @@ export class SubmissionsService {
   private scopeCondition(user: AuthUser, scope: SubmissionScope) {
     return scope === 'me' ? eq(submissions.requesterId, user.id) : undefined;
   }
-}
-
-function isReviewer(user: AuthUser): boolean {
-  return user.roles.includes('REVIEWER') || user.roles.includes('SUPER_ADMIN');
 }
 
 function notFound(): AppException {

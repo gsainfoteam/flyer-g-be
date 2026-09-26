@@ -22,6 +22,12 @@ export class SubmissionDto {
   @ApiProperty({ example: '6f1c2c1e-0000-4000-8000-000000000001' })
   requesterId: string;
 
+  @ApiProperty({
+    description: '신청자 이름. 검토 화면에서 누가 올렸는지 보여준다',
+    example: '홍길동',
+  })
+  requesterName: string;
+
   @ApiProperty({ enum: ['POSTER'], example: 'POSTER' })
   type: 'POSTER';
 
