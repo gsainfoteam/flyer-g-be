@@ -23,3 +23,20 @@ export function addMonthsInSeoul(date: Date, months: number): Date {
   );
   return new Date(shifted - SEOUL_OFFSET_MS);
 }
+
+/** 서울 달력 날짜 (YYYY-MM-DD) */
+export function seoulDate(date: Date): string {
+  return new Date(date.getTime() + SEOUL_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/** 서울 날짜(YYYY-MM-DD)의 00:00 KST 시각 */
+export function startOfSeoulDay(day: string): Date {
+  return new Date(Date.parse(`${day}T00:00:00.000Z`) - SEOUL_OFFSET_MS);
+}
+
+/** 서울 날짜에 n일을 더한 날짜 */
+export function addSeoulDays(day: string, days: number): string {
+  return seoulDate(
+    new Date(startOfSeoulDay(day).getTime() + days * 86_400_000),
+  );
+}

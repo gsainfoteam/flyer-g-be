@@ -1,4 +1,9 @@
-import { addMonthsInSeoul } from './seoul-time.js';
+import {
+  addMonthsInSeoul,
+  addSeoulDays,
+  seoulDate,
+  startOfSeoulDay,
+} from './seoul-time.js';
 
 const kst = (iso: string) => new Date(`${iso}+09:00`);
 
@@ -21,5 +26,24 @@ describe('addMonthsInSeoul', () => {
     expect(addMonthsInSeoul(kst('2026-01-31T00:30:00'), 1).toISOString()).toBe(
       kst('2026-02-28T00:30:00').toISOString(),
     );
+  });
+});
+
+describe('seoulDate / startOfSeoulDay / addSeoulDays', () => {
+  it('UTC로 전날 15시 이후는 서울로 다음 날이다', () => {
+    expect(seoulDate(new Date('2026-09-20T14:59:59.999Z'))).toBe('2026-09-20');
+    expect(seoulDate(new Date('2026-09-20T15:00:00.000Z'))).toBe('2026-09-21');
+  });
+
+  it('서울 날짜의 시작은 UTC 전날 15시다', () => {
+    expect(startOfSeoulDay('2026-09-21').toISOString()).toBe(
+      '2026-09-20T15:00:00.000Z',
+    );
+  });
+
+  it('날짜를 더하고 빼며 달·해를 넘긴다', () => {
+    expect(addSeoulDays('2026-12-31', 1)).toBe('2027-01-01');
+    expect(addSeoulDays('2026-03-01', -1)).toBe('2026-02-28');
+    expect(addSeoulDays('2026-09-27', -89)).toBe('2026-06-30');
   });
 });
