@@ -81,7 +81,8 @@ export class SessionUserDto {
   roles: Role[];
 
   @ApiProperty({
-    description: '소속 조직 ID 목록. 조직 모델 설계 전까지 항상 빈 배열',
+    description:
+      '항상 빈 배열. 조직 모델을 두지 않기로 해 호환용으로만 남아 있다 (주최는 신청마다 자유 입력)',
     type: [String],
     example: [],
   })

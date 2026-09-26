@@ -54,7 +54,7 @@ export class AuthService {
         displayName: user.name,
         email: user.email,
         roles: user.roles,
-        // 조직 모델은 게시 신청(5절) 작업 때 설계한다.
+        // 조직 모델은 두지 않는다(주최는 신청에 자유 입력). 프론트 계약 호환을 위해 빈 배열을 유지한다.
         organizationIds: [],
       },
       expiresAt: user.tokenExpiresAt.toISOString(),

@@ -3,10 +3,13 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
+import { CategoriesModule } from './categories/categories.module.js';
 import { CommonModule } from './common/common.module.js';
 import { validateEnv } from './config/env.js';
 import { DbModule } from './db/db.module.js';
 import { HealthModule } from './health/health.module.js';
+import { PolicyModule } from './policy/policy.module.js';
+import { TargetGroupsModule } from './target-groups/target-groups.module.js';
 
 @Module({
   imports: [
@@ -18,6 +21,9 @@ import { HealthModule } from './health/health.module.js';
     CommonModule,
     HealthModule,
     AuthModule,
+    PolicyModule,
+    CategoriesModule,
+    TargetGroupsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
