@@ -118,6 +118,65 @@ export const targetGroups = pgTable(
   ],
 );
 
+export const assetStatusEnum = pgEnum('asset_status', [
+  // 서명 URL을 발급했고 브라우저 업로드를 기다린다
+  'PENDING_UPLOAD',
+  // 검증과 변형 이미지 생성을 마쳤다. 신청에 쓸 수 있다
+  'READY',
+  // 형식·크기·해상도 검증에 실패했다. 원본은 지웠다
+  'REJECTED',
+]);
+
+/**
+ * 업로드한 포스터 이미지. 원본은 uploads/<id>(비공개)에 받아 검증한 뒤 지우고,
+ * EXIF를 뺀 변형 이미지만 assets/<id>/<variant>.webp(공개)에 남긴다.
+ * 내용이 바뀌지 않으므로 포스터를 바꾸려면 새 asset을 만든다.
+ */
+export const assets = pgTable(
+  'assets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    status: assetStatusEnum('status').notNull().default('PENDING_UPLOAD'),
+
+    // presign 요청에서 사용자가 알려 준 값. 서명 URL 조건과 완료 시 대조에 쓴다.
+    fileName: varchar('file_name', { length: 255 }).notNull(),
+    declaredMimeType: varchar('declared_mime_type', { length: 50 }).notNull(),
+    declaredSizeBytes: integer('declared_size_bytes').notNull(),
+    declaredChecksum: varchar('declared_checksum', { length: 71 }),
+    uploadExpiresAt: timestamp('upload_expires_at', {
+      withTimezone: true,
+    }).notNull(),
+
+    // 완료 처리에서 파일 내용으로 판별한 값 (READY일 때 채워진다)
+    mimeType: varchar('mime_type', { length: 50 }),
+    width: integer('width'),
+    height: integer('height'),
+    sizeBytes: integer('size_bytes'),
+    // sha256:<hex>. TV 미디어 캐시 key이자 승인 시 고정하는 값
+    checksum: varchar('checksum', { length: 71 }),
+    // REJECTED일 때 사용자에게 보여 줄 사유
+    rejectionReason: varchar('rejection_reason', { length: 255 }),
+    processedAt: timestamp('processed_at', { withTimezone: true }),
+
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('assets_owner_id_idx').on(table.ownerId),
+    // 신청되지 않은 채 남은 업로드를 정리할 때 쓴다 (Phase 8)
+    index('assets_status_created_at_idx').on(table.status, table.createdAt),
+  ],
+);
+
+export type Asset = typeof assets.$inferSelect;
+
 export const idempotencyStatusEnum = pgEnum('idempotency_status', [
   'IN_PROGRESS',
   'COMPLETED',

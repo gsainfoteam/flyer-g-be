@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { AssetsModule } from './assets/assets.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CategoriesModule } from './categories/categories.module.js';
 import { CommonModule } from './common/common.module.js';
@@ -24,6 +25,7 @@ import { TargetGroupsModule } from './target-groups/target-groups.module.js';
     PolicyModule,
     CategoriesModule,
     TargetGroupsModule,
+    AssetsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
