@@ -39,6 +39,12 @@ const envSchema = z
     JWT_SECRET: z.string().min(32, 'JWT_SECRET은 32자 이상이어야 합니다'),
     JWT_EXPIRES_IN: z.coerce.number().int().min(60).max(86400).default(3600),
 
+    // 포스터를 저장하는 AWS S3. 이름은 인포팀 다른 서비스(account-be)와 같다.
+    AWS_S3_REGION: z.string().min(1),
+    AWS_S3_BUCKET: z.string().min(1),
+    AWS_ACCESS_KEY_ID: z.string().min(1),
+    AWS_SECRET_ACCESS_KEY: z.string().min(1),
+
     // 둘 다 설정하면 Swagger 문서(/docs)를 Basic Auth로 잠근다. 둘 다 비우면 공개.
     SWAGGER_USER: optionalString,
     SWAGGER_PASSWORD: optionalString,

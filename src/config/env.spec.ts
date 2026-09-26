@@ -13,6 +13,10 @@ const base = {
   IDP_CLIENT_ID: 'test-client',
   IDP_CLIENT_SECRET: fakeSecret(),
   JWT_SECRET: fakeSecret(),
+  AWS_S3_REGION: 'ap-northeast-2',
+  AWS_S3_BUCKET: 'flyer-g-test',
+  AWS_ACCESS_KEY_ID: 'test-access-key',
+  AWS_SECRET_ACCESS_KEY: fakeSecret(),
 };
 
 describe('validateEnv — Swagger 잠금', () => {
@@ -49,5 +53,17 @@ describe('validateEnv — Swagger 잠금', () => {
     expect(() =>
       validateEnv({ ...base, SWAGGER_USER: 'infoteam', SWAGGER_PASSWORD: '' }),
     ).toThrow(/SWAGGER_USER와 SWAGGER_PASSWORD/);
+  });
+});
+
+describe('validateEnv — S3', () => {
+  it.each([
+    'AWS_S3_REGION',
+    'AWS_S3_BUCKET',
+    'AWS_ACCESS_KEY_ID',
+    'AWS_SECRET_ACCESS_KEY',
+  ] as const)('%s가 없으면 시작 시점에 실패한다', (key) => {
+    const { [key]: _, ...rest } = base;
+    expect(() => validateEnv(rest)).toThrow(new RegExp(key));
   });
 });
