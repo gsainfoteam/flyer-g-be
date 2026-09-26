@@ -6,6 +6,7 @@ import type { Env } from '../config/env.js';
 import { DB_CONNECTION, type Database } from '../db/index.js';
 import { AssetCleanupJob } from './asset-cleanup.job.js';
 import { JobLock, withJobLock } from './job-lock.js';
+import { PlayEventAggregationJob } from './play-event-aggregation.job.js';
 import { SubmissionStatusJob } from './submission-status.job.js';
 
 /**
@@ -22,6 +23,7 @@ export class SchedulerService {
     @Inject(DB_CONNECTION) private readonly db: Database,
     private readonly submissionStatusJob: SubmissionStatusJob,
     private readonly assetCleanupJob: AssetCleanupJob,
+    private readonly playEventAggregationJob: PlayEventAggregationJob,
     private readonly idempotencyService: IdempotencyService,
   ) {
     this.enabled = config.get('SCHEDULER_ENABLED', { infer: true });
@@ -37,6 +39,13 @@ export class SchedulerService {
   @Cron(CronExpression.EVERY_HOUR, { name: 'asset-cleanup' })
   async cleanupAssets(): Promise<void> {
     await this.runJob('asset-cleanup', () => this.assetCleanupJob.run());
+  }
+
+  @Cron(CronExpression.EVERY_10_MINUTES, { name: 'play-event-aggregation' })
+  async aggregatePlayEvents(): Promise<void> {
+    await this.runJob('play-event-aggregation', () =>
+      this.playEventAggregationJob.run(),
+    );
   }
 
   @Cron(CronExpression.EVERY_HOUR, { name: 'idempotency-cleanup' })
