@@ -64,6 +64,13 @@
       "when": 1790441243097,
       "tag": "0008_device_telemetry",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790445968093,
+      "tag": "0009_storage_deletions",
+      "breakpoints": true
     }
   ]
 }

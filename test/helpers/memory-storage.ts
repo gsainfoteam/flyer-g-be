@@ -3,6 +3,10 @@ import type { StorageService } from '../../src/storage/storage.service.js';
 /** e2e용 저장소. 브라우저 업로드는 upload()로 흉내 낸다. */
 export class MemoryStorage implements StorageService {
   readonly objects = new Map<string, { body: Buffer; contentType: string }>();
+  /** 여기 넣은 키는 삭제가 실패한다 (저장소 장애 흉내) */
+  readonly failDeletes = new Set<string>();
+  /** put 직전에 부른다 (처리 도중 다른 작업이 끼어드는 상황 흉내) */
+  beforePut?: (key: string) => Promise<void>;
 
   async presignPut(key: string): Promise<string> {
     return `memory://upload/${key}`;
@@ -30,10 +34,14 @@ export class MemoryStorage implements StorageService {
     body: Buffer,
     options: { contentType: string },
   ): Promise<void> {
+    await this.beforePut?.(key);
     this.objects.set(key, { body, contentType: options.contentType });
   }
 
   async delete(key: string): Promise<void> {
+    if (this.failDeletes.has(key)) {
+      throw new Error(`simulated storage failure for ${key}`);
+    }
     this.objects.delete(key);
   }
 

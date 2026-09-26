@@ -1,6 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
-import { DB_CONNECTION, type Database } from '../../db/index.js';
+import { and, eq, lt, sql } from 'drizzle-orm';
+import {
+  DB_CONNECTION,
+  type Database,
+  type Transaction,
+} from '../../db/index.js';
 import { idempotencyKeys } from '../../db/schema.js';
 
 export type ClaimResult =
@@ -104,5 +108,17 @@ export class IdempotencyService {
           eq(idempotencyKeys.status, 'IN_PROGRESS'),
         ),
       );
+  }
+
+  /**
+   * 보관 기간이 지난 기록을 지운다. 지우지 않아도 claim이 만료된 기록을 덮어쓰지만 테이블이 계속 커진다.
+   * 스케줄러가 잠금을 잡은 트랜잭션 안에서 부른다.
+   */
+  async deleteExpired(tx: Transaction, now: Date): Promise<number> {
+    const deleted = await tx
+      .delete(idempotencyKeys)
+      .where(lt(idempotencyKeys.expiresAt, now))
+      .returning({ key: idempotencyKeys.key });
+    return deleted.length;
   }
 }

@@ -31,6 +31,8 @@ import { RequestIdMiddleware } from './request-id/request-id.js';
     },
     { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
   ],
+  // 만료 기록 정리는 스케줄러(src/jobs)가 한다.
+  exports: [IdempotencyService],
 })
 export class CommonModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
