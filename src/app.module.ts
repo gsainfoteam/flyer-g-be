@@ -11,6 +11,7 @@ import { DbModule } from './db/db.module.js';
 import { DeviceTelemetryModule } from './device-telemetry/device-telemetry.module.js';
 import { DevicesModule } from './devices/devices.module.js';
 import { HealthModule } from './health/health.module.js';
+import { JobsModule } from './jobs/jobs.module.js';
 import { PlaylistModule } from './playlist/playlist.module.js';
 import { PolicyModule } from './policy/policy.module.js';
 import { ReviewsModule } from './reviews/reviews.module.js';
@@ -36,6 +37,7 @@ import { TargetGroupsModule } from './target-groups/target-groups.module.js';
     DevicesModule,
     PlaylistModule,
     DeviceTelemetryModule,
+    JobsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
