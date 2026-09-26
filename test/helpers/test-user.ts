@@ -5,6 +5,8 @@ import { eq } from 'drizzle-orm';
 import { DB_CONNECTION, type Database } from '../../src/db/index.js';
 import {
   assets,
+  auditLogs,
+  reviews,
   submissions,
   userRoles,
   users,
@@ -21,7 +23,7 @@ export type TestUser = {
 
 /**
  * e2e용 사용자를 만들고 access token을 발급한다. IdP를 거치지 않는다.
- * 테스트가 끝나면 remove()로 지운다. 신청은 사용자 삭제로 연쇄 삭제되지 않아 먼저 지운다.
+ * 테스트가 끝나면 remove()로 지운다.
  */
 export async function createTestUser(
   app: INestApplication,
@@ -50,7 +52,10 @@ export async function createTestUser(
     user,
     authHeader: `Bearer ${token}`,
     remove: async () => {
+      // 신청·검토 이력은 사용자 삭제로 연쇄 삭제되지 않고, 감사 로그는 FK가 없어 직접 지운다.
       await db.delete(submissions).where(eq(submissions.requesterId, user.id));
+      await db.delete(reviews).where(eq(reviews.reviewerId, user.id));
+      await db.delete(auditLogs).where(eq(auditLogs.actorId, user.id));
       await db.delete(users).where(eq(users.id, user.id));
     },
   };

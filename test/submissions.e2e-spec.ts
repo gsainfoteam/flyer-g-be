@@ -129,6 +129,7 @@ describe('게시 신청 (e2e)', () => {
         id: expect.any(String),
         ziggleNoticeId: body.detailUrl.split('/').pop(),
         requesterId: owner.user.id,
+        requesterName: 'E2E 사용자',
         type: 'POSTER',
         title: '겨울 정기 공연 〈한밤의 물리학〉',
         categoryId: 'performance',
