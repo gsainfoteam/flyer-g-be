@@ -272,6 +272,91 @@ export const submissionTargetGroups = pgTable(
 
 export type Submission = typeof submissions.$inferSelect;
 
+export const reviewDecisionEnum = pgEnum('review_decision', [
+  'APPROVED',
+  'REJECTED',
+  // 게시 중단도 검토 이력에 남긴다. 신청자 상세에 중단 사유를 보여줘야 한다(FR-REV-05).
+  'SUSPENDED',
+]);
+
+/** 반려 사유 (FR-REV-04). 값을 추가하면 프론트 라벨도 함께 바꿔야 한다. */
+export const rejectReasonCodeEnum = pgEnum('reject_reason_code', [
+  'LOW_RESOLUTION',
+  'ASPECT_RATIO',
+  'INFO_MISMATCH',
+  'INAPPROPRIATE',
+  'PERIOD',
+  'DUPLICATE',
+  'OTHER',
+]);
+
+export type ReviewDecision = (typeof reviewDecisionEnum.enumValues)[number];
+export type RejectReasonCode = (typeof rejectReasonCodeEnum.enumValues)[number];
+
+/** 검토 결정 이력. 한 번 쓰면 고치지 않는다. */
+export const reviews = pgTable(
+  'reviews',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    submissionId: uuid('submission_id')
+      .notNull()
+      .references(() => submissions.id, { onDelete: 'cascade' }),
+    // 검토자가 화면에서 보고 결정한 신청 version
+    revision: integer('revision').notNull(),
+    decision: reviewDecisionEnum('decision').notNull(),
+    reasonCode: rejectReasonCodeEnum('reason_code'),
+    // 반려 의견·중단 사유. 신청자에게 그대로 보인다.
+    comment: varchar('comment', { length: 1000 }),
+    reviewerId: uuid('reviewer_id')
+      .notNull()
+      .references(() => users.id),
+    // 승인한 포스터의 checksum. 승인 이후 편성은 이 미디어를 기준으로 한다(FR-REV-03).
+    assetChecksum: varchar('asset_checksum', { length: 71 }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index('reviews_submission_reviewed_idx').on(
+      table.submissionId,
+      table.reviewedAt,
+    ),
+  ],
+);
+
+export const auditActorTypeEnum = pgEnum('audit_actor_type', [
+  'USER',
+  'DEVICE',
+  'SYSTEM',
+]);
+
+/**
+ * 누가 무엇을 바꿨는지 (FR-AUD-01). 조회 API는 후속 Phase에서 만든다.
+ * 대상 행을 지워도 기록은 남도록 FK를 걸지 않는다.
+ */
+export const auditLogs = pgTable(
+  'audit_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    actorType: auditActorTypeEnum('actor_type').notNull(),
+    actorId: varchar('actor_id', { length: 64 }),
+    // 예: SUBMISSION_APPROVED. 값 목록은 src/audit/audit.service.ts
+    action: varchar('action', { length: 64 }).notNull(),
+    targetType: varchar('target_type', { length: 32 }).notNull(),
+    targetId: varchar('target_id', { length: 64 }).notNull(),
+    reason: varchar('reason', { length: 1000 }),
+    metadata: jsonb('metadata'),
+    requestId: varchar('request_id', { length: 128 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index('audit_logs_target_idx').on(
+      table.targetType,
+      table.targetId,
+      table.createdAt,
+    ),
+    index('audit_logs_created_idx').on(table.createdAt),
+  ],
+);
+
 export const idempotencyStatusEnum = pgEnum('idempotency_status', [
   'IN_PROGRESS',
   'COMPLETED',

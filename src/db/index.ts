@@ -30,6 +30,9 @@ export function createDatabaseConnection(params: DatabaseConnectionParams) {
 
 export type Database = ReturnType<typeof createDatabaseConnection>;
 
+/** db.transaction() 콜백이 받는 tx. 여러 쓰기를 한 트랜잭션에 묶을 때 서비스끼리 주고받는다. */
+export type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
+
 // Postgres advisory lock 번호. 프로젝트마다 달라야 한다.
 // 파드가 여러 개 동시에 뜰 때 마이그레이션이 겹쳐 돌지 않게 막는 용도.
 const LOCK_A = 1179207269;

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes } from 'node:crypto';
 import { Injectable, type NestMiddleware } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
@@ -32,10 +33,18 @@ export function assignRequestId(req: RequestWithId, res: Response): string {
   return req.requestId;
 }
 
+// 요청 처리 중 어디서든 requestId를 읽을 수 있게 한다(감사 로그 등). 인자로 계속 넘기지 않아도 된다.
+const requestContext = new AsyncLocalStorage<{ requestId: string }>();
+
+/** 지금 처리 중인 요청의 requestId. 요청 밖(배치 등)이면 undefined */
+export function currentRequestId(): string | undefined {
+  return requestContext.getStore()?.requestId;
+}
+
 @Injectable()
 export class RequestIdMiddleware implements NestMiddleware {
   use(req: RequestWithId, res: Response, next: NextFunction): void {
-    assignRequestId(req, res);
-    next();
+    const requestId = assignRequestId(req, res);
+    requestContext.run({ requestId }, next);
   }
 }

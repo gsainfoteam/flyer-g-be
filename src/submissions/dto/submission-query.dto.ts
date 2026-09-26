@@ -1,7 +1,17 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsArray, IsIn, IsOptional } from 'class-validator';
-import { CursorQueryDto } from '../../common/pagination/cursor-query.dto.js';
+import {
+  IsArray,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
+import {
+  CursorField,
+  CursorQueryDto,
+  LimitField,
+} from '../../common/pagination/cursor-query.dto.js';
 import {
   submissionStatusEnum,
   type SubmissionStatus,
@@ -56,4 +66,35 @@ export class SubmissionSummaryQueryDto {
   )
   @IsIn(SUBMISSION_SCOPES, { message: 'scope는 me 또는 all이어야 합니다.' })
   scope: SubmissionScope = 'me';
+}
+
+export class ReviewQueueQueryDto {
+  @ApiPropertyOptional({
+    description: '볼 상태. 기본은 검토 대기',
+    enum: submissionStatusEnum.enumValues,
+    default: 'PENDING_REVIEW',
+  })
+  @Transform(({ value }) =>
+    value === '' || value === undefined ? 'PENDING_REVIEW' : value,
+  )
+  @IsIn(submissionStatusEnum.enumValues, {
+    message: '알 수 없는 상태입니다.',
+  })
+  status: SubmissionStatus = 'PENDING_REVIEW';
+
+  @ApiPropertyOptional({
+    description: '카테고리 필터 (GET /signage/categories의 id)',
+    example: 'performance',
+  })
+  @Transform(({ value }) => (value === '' ? undefined : value))
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  categoryId?: string;
+
+  @CursorField()
+  cursor?: string;
+
+  @LimitField(20)
+  limit: number = 20;
 }

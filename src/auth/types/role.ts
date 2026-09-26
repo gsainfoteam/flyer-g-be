@@ -10,3 +10,8 @@ export type Role = 'SUBMITTER' | GrantedRole;
 export function resolveRoles(grantedRoles: GrantedRole[]): Role[] {
   return ['SUBMITTER', ...grantedRoles];
 }
+
+/** 검토 권한. SUPER_ADMIN은 모든 역할을 가진 것으로 본다(RolesGuard와 같은 규칙). */
+export function isReviewer(roles: Role[]): boolean {
+  return roles.includes('REVIEWER') || roles.includes('SUPER_ADMIN');
+}

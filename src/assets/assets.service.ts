@@ -175,6 +175,14 @@ export class AssetsService {
     return this.toDto(ready ?? (await this.findOwned(ownerId, assetId)));
   }
 
+  async findById(assetId: string): Promise<Asset | null> {
+    const [asset] = await this.db
+      .select()
+      .from(assets)
+      .where(eq(assets.id, assetId));
+    return asset ?? null;
+  }
+
   /** 남의 asset이나 없는 asset은 null */
   async findOwnedOrNull(
     ownerId: string,
