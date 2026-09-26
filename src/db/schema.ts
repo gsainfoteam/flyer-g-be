@@ -356,11 +356,15 @@ export const devices = pgTable(
       withTimezone: true,
     }).notNull(),
 
-    // heartbeat가 채운다 (Phase 7)
+    // heartbeat가 채운다. lastSeenAt은 기기 시계가 아니라 서버가 받은 시각이다.
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     appVersion: varchar('app_version', { length: 32 }),
     resolutionWidth: integer('resolution_width'),
     resolutionHeight: integer('resolution_height'),
+    // 기기가 지금 재생 중이라고 알린 편성 버전. 최신 편성과 다르면 동기화가 밀린 것이다.
+    lastPlaylistVersion: varchar('last_playlist_version', { length: 64 }),
+    // 기기가 마지막으로 포스터를 정상 렌더링한 시각(기기 시계 기준)
+    lastRenderOkAt: timestamp('last_render_ok_at', { withTimezone: true }),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
@@ -395,6 +399,37 @@ export const deviceTargetGroups = pgTable(
 );
 
 export type Device = typeof devices.$inferSelect;
+
+/**
+ * 노출 이벤트: 기기가 포스터를 정상 렌더링한 기록 (FR-DASH-03). 사람이 본 횟수가 아니다.
+ * 재시작·재연결로 같은 batch가 다시 올 수 있어 (기기, eventId)로 중복을 막는다.
+ * submissionId는 FK를 걸지 않는다. 삭제된 신청의 이벤트가 섞여도 batch 전체가 실패하지 않게 한다.
+ */
+export const playEvents = pgTable(
+  'play_events',
+  {
+    deviceId: uuid('device_id')
+      .notNull()
+      .references(() => devices.id, { onDelete: 'cascade' }),
+    eventId: uuid('event_id').notNull(),
+    // 플레이어 프로세스 하나. 재시작으로 인한 과다 집계를 분석 단계에서 거를 때 쓴다.
+    sessionId: varchar('session_id', { length: 64 }).notNull(),
+    submissionId: uuid('submission_id').notNull(),
+    revision: integer('revision'),
+    // 기기 시계 기준
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+    durationMs: integer('duration_ms').notNull(),
+    completed: boolean('completed').notNull(),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.deviceId, table.eventId] }),
+    index('play_events_submission_started_idx').on(
+      table.submissionId,
+      table.startedAt,
+    ),
+  ],
+);
 
 export const auditActorTypeEnum = pgEnum('audit_actor_type', [
   'USER',
