@@ -1,4 +1,3 @@
-import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
@@ -7,11 +6,6 @@ import { setupSwagger } from './config/swagger.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-
-  // DTO 검증을 전역으로 켠다. whitelist: DTO에 없는 필드는 잘라낸다.
-  app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, transform: true }),
-  );
 
   // 컨테이너가 종료 신호(SIGTERM)를 받으면 진행 중인 요청을 정리하고 내려간다.
   app.enableShutdownHooks();

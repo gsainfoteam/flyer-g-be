@@ -1,13 +1,13 @@
 import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
 import {
   ApiBadGatewayResponse,
-  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
+  ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import { ErrorResponseDto } from '../common/dto/error-response.dto.js';
 import { BEARER_AUTH } from '../config/swagger.js';
@@ -40,8 +40,8 @@ export class AuthController {
 3. 서버가 IdP 토큰으로 교환하고 사용자를 확인한 뒤 자체 access token을 발급한다`,
   })
   @ApiOkResponse({ type: TokenResponseDto })
-  @ApiBadRequestResponse({
-    description: '입력 검증 실패',
+  @ApiUnprocessableEntityResponse({
+    description: '입력 검증 실패 (VALIDATION_FAILED, fields에 필드별 오류)',
     type: ErrorResponseDto,
   })
   @ApiUnauthorizedResponse({
@@ -62,8 +62,8 @@ export class AuthController {
       'IdP refresh token으로 access token을 다시 발급한다. 응답의 refreshToken으로 교체해 저장한다.',
   })
   @ApiOkResponse({ type: TokenResponseDto })
-  @ApiBadRequestResponse({
-    description: '입력 검증 실패',
+  @ApiUnprocessableEntityResponse({
+    description: '입력 검증 실패 (VALIDATION_FAILED, fields에 필드별 오류)',
     type: ErrorResponseDto,
   })
   @ApiUnauthorizedResponse({

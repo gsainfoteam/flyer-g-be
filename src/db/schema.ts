@@ -7,6 +7,8 @@
  */
 
 import {
+  index,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -56,6 +58,38 @@ export const userRoles = pgTable(
       .defaultNow(),
   },
   (table) => [primaryKey({ columns: [table.userId, table.role] })],
+);
+
+export const idempotencyStatusEnum = pgEnum('idempotency_status', [
+  'IN_PROGRESS',
+  'COMPLETED',
+]);
+
+/**
+ * Idempotency-Key로 받은 요청의 처리 상태와 성공 응답.
+ * 같은 key의 재시도에는 저장된 응답을 그대로 돌려준다(src/common/idempotency).
+ */
+export const idempotencyKeys = pgTable(
+  'idempotency_keys',
+  {
+    // key를 보낸 주체. 'user:<users.id>' 형식이라 다른 사용자의 응답을 받을 수 없다.
+    scope: varchar('scope', { length: 64 }).notNull(),
+    key: varchar('key', { length: 255 }).notNull(),
+    // method + path + body의 sha256. 같은 key로 다른 요청을 보내면 거절한다.
+    fingerprint: varchar('fingerprint', { length: 64 }).notNull(),
+    status: idempotencyStatusEnum('status').notNull(),
+    responseBody: jsonb('response_body'),
+    // 처리 중인 요청이 이 시각까지 끝나지 않으면 죽은 것으로 보고 다른 요청이 넘겨받는다.
+    lockedUntil: timestamp('locked_until', { withTimezone: true }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scope, table.key] }),
+    index('idempotency_keys_expires_at_idx').on(table.expiresAt),
+  ],
 );
 
 export type User = typeof users.$inferSelect;
