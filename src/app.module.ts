@@ -15,6 +15,7 @@ import { JobsModule } from './jobs/jobs.module.js';
 import { PlaylistModule } from './playlist/playlist.module.js';
 import { PolicyModule } from './policy/policy.module.js';
 import { ReviewsModule } from './reviews/reviews.module.js';
+import { StatsModule } from './stats/stats.module.js';
 import { SubmissionsModule } from './submissions/submissions.module.js';
 import { TargetGroupsModule } from './target-groups/target-groups.module.js';
 
@@ -38,6 +39,7 @@ import { TargetGroupsModule } from './target-groups/target-groups.module.js';
     PlaylistModule,
     DeviceTelemetryModule,
     JobsModule,
+    StatsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
