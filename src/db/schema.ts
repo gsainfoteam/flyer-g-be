@@ -8,8 +8,10 @@
 
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -428,8 +430,45 @@ export const playEvents = pgTable(
       table.submissionId,
       table.startedAt,
     ),
+    // 기간별 재집계와 보관 기간 정리(started_at 기준)에 쓴다.
+    index('play_events_started_idx').on(table.startedAt),
+    // 집계 작업이 "지난 실행 이후 새로 들어온 이벤트"를 찾을 때 쓴다.
+    index('play_events_received_idx').on(table.receivedAt),
   ],
 );
+
+/**
+ * 노출 이벤트의 일별 집계 (서울 날짜, 게시물, 기기). 통계 API는 이 테이블을 읽는다.
+ * 원본(play_events)은 보관 기간이 지나면 지우지만 집계는 남는다.
+ * 기기·신청을 지워도 과거 통계가 남도록 FK를 걸지 않는다.
+ */
+export const playEventDaily = pgTable(
+  'play_event_daily',
+  {
+    // 기기 시계로 렌더링을 시작한 시각의 서울 날짜
+    day: date('day', { mode: 'string' }).notNull(),
+    submissionId: uuid('submission_id').notNull(),
+    deviceId: uuid('device_id').notNull(),
+    impressions: integer('impressions').notNull(),
+    completedImpressions: integer('completed_impressions').notNull(),
+    totalDurationMs: bigint('total_duration_ms', { mode: 'number' }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.day, table.submissionId, table.deviceId] }),
+    index('play_event_daily_submission_day_idx').on(
+      table.submissionId,
+      table.day,
+    ),
+  ],
+);
+
+/** 주기 작업이 어디까지 처리했는지 (예: 노출 집계가 마지막으로 본 수신 시각) */
+export const jobWatermarks = pgTable('job_watermarks', {
+  name: varchar('name', { length: 64 }).primaryKey(),
+  value: timestamp('value', { withTimezone: true }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+});
 
 export const auditActorTypeEnum = pgEnum('audit_actor_type', [
   'USER',
