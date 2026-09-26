@@ -322,6 +322,80 @@ export const reviews = pgTable(
   ],
 );
 
+export const deviceOrientationEnum = pgEnum('device_orientation', [
+  'LANDSCAPE',
+  'PORTRAIT',
+]);
+
+export const displayLayoutEnum = pgEnum('display_layout', [
+  'SINGLE',
+  'FOUR_GRID',
+]);
+
+/**
+ * 게시물을 띄우는 TV. 사용자 로그인 없이 관리자가 발급한 기기 토큰으로 접근한다.
+ * 토큰 원문은 발급할 때 한 번만 보여 주고 DB에는 sha256만 둔다.
+ */
+export const devices = pgTable(
+  'devices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: varchar('name', { length: 100 }).notNull(),
+    location: varchar('location', { length: 200 }),
+    orientation: deviceOrientationEnum('orientation')
+      .notNull()
+      .default('LANDSCAPE'),
+    // 편성 응답에 그대로 싣는 화면 설정 (요구사항 8절 확인 필요 13번: 기기별로 운영자가 정한다)
+    layout: displayLayoutEnum('layout').notNull().default('FOUR_GRID'),
+    rotationSeconds: integer('rotation_seconds').notNull().default(10),
+    refreshAfterSeconds: integer('refresh_after_seconds').notNull().default(60),
+    // 비활성 기기는 토큰이 있어도 접근할 수 없다.
+    isActive: boolean('is_active').notNull().default(true),
+    tokenHash: varchar('token_hash', { length: 64 }).notNull().unique(),
+    tokenIssuedAt: timestamp('token_issued_at', {
+      withTimezone: true,
+    }).notNull(),
+
+    // heartbeat가 채운다 (Phase 7)
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    appVersion: varchar('app_version', { length: 32 }),
+    resolutionWidth: integer('resolution_width'),
+    resolutionHeight: integer('resolution_height'),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    check(
+      'devices_rotation_seconds_range',
+      sql`${table.rotationSeconds} between 5 and 60`,
+    ),
+    check(
+      'devices_refresh_after_seconds_range',
+      sql`${table.refreshAfterSeconds} between 15 and 300`,
+    ),
+  ],
+);
+
+/** 기기가 속한 위치 그룹. 신청의 대상 그룹과 겹치면 그 기기에 편성된다. */
+export const deviceTargetGroups = pgTable(
+  'device_target_groups',
+  {
+    deviceId: uuid('device_id')
+      .notNull()
+      .references(() => devices.id, { onDelete: 'cascade' }),
+    targetGroupId: varchar('target_group_id', { length: 64 })
+      .notNull()
+      .references(() => targetGroups.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.deviceId, table.targetGroupId] }),
+    index('device_target_groups_group_idx').on(table.targetGroupId),
+  ],
+);
+
+export type Device = typeof devices.$inferSelect;
+
 export const auditActorTypeEnum = pgEnum('audit_actor_type', [
   'USER',
   'DEVICE',

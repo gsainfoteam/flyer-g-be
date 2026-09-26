@@ -10,12 +10,15 @@ export type AuditAction =
   | 'SUBMISSION_CANCELED'
   | 'SUBMISSION_APPROVED'
   | 'SUBMISSION_REJECTED'
-  | 'SUBMISSION_SUSPENDED';
+  | 'SUBMISSION_SUSPENDED'
+  | 'DEVICE_REGISTERED'
+  | 'DEVICE_UPDATED'
+  | 'DEVICE_TOKEN_ROTATED';
 
 export type AuditEntry = {
   actor: { type: 'USER' | 'DEVICE' | 'SYSTEM'; id: string | null };
   action: AuditAction;
-  target: { type: 'SUBMISSION'; id: string };
+  target: { type: 'SUBMISSION' | 'DEVICE'; id: string };
   reason?: string | null;
   metadata?: Record<string, unknown>;
   at: Date;
