@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { DB_CONNECTION, type Database } from '../db/index.js';
 import { targetGroups } from '../db/schema.js';
 
@@ -23,5 +23,20 @@ export class TargetGroupsService {
 
     // 기기 테이블은 Phase 5(기기 등록)에서 생긴다. 그때 그룹별 기기 수를 센다.
     return rows.map((row) => ({ ...row, deviceCount: 0 }));
+  }
+
+  /** 주어진 ID 중 없거나 숨긴 그룹 */
+  async findUnavailable(ids: string[]): Promise<string[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const rows = await this.db
+      .select({ id: targetGroups.id })
+      .from(targetGroups)
+      .where(
+        and(inArray(targetGroups.id, ids), eq(targetGroups.isActive, true)),
+      );
+    const available = new Set(rows.map((row) => row.id));
+    return ids.filter((id) => !available.has(id));
   }
 }

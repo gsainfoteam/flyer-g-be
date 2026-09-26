@@ -17,6 +17,7 @@ import {
   pgTable,
   primaryKey,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -176,6 +177,100 @@ export const assets = pgTable(
 );
 
 export type Asset = typeof assets.$inferSelect;
+
+/**
+ * 게시 신청 상태 (요구사항 6.3의 10개 값). 전이 규칙은 src/submissions/submission-rules.ts.
+ * APPROVED·SCHEDULED·PUBLISHED·ENDED는 시각에 따라 바뀌는데, 배치가 늦어도
+ * 화면·편성이 어긋나지 않도록 판정은 항상 status와 기간을 함께 본다.
+ */
+export const submissionStatusEnum = pgEnum('submission_status', [
+  'DRAFT',
+  'PENDING_REVIEW',
+  'REJECTED',
+  'APPROVED',
+  'SCHEDULED',
+  'PUBLISHED',
+  'ENDED',
+  'SUSPENDED',
+  'CANCELED',
+  'ARCHIVED',
+]);
+
+export type SubmissionStatus = (typeof submissionStatusEnum.enumValues)[number];
+
+export const submissions = pgTable(
+  'submissions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    requesterId: uuid('requester_id')
+      .notNull()
+      .references(() => users.id),
+    // detailUrl이 Ziggle 공지 주소면 서버가 뽑아 넣는다. 공지 하나에 신청 하나를 보장하는 기준.
+    ziggleNoticeId: varchar('ziggle_notice_id', { length: 64 }),
+    title: varchar('title', { length: 200 }).notNull(),
+    categoryId: varchar('category_id', { length: 64 })
+      .notNull()
+      .references(() => categories.id),
+    assetId: uuid('asset_id')
+      .notNull()
+      .references(() => assets.id),
+    detailUrl: varchar('detail_url', { length: 2048 }),
+    startAt: timestamp('start_at', { withTimezone: true }).notNull(),
+    endAt: timestamp('end_at', { withTimezone: true }).notNull(),
+    status: submissionStatusEnum('status').notNull(),
+    // 편성 우선순위. 운영자가 정한다(기본 0).
+    priority: integer('priority').notNull().default(0),
+
+    // 화면 표시용 자유 입력. 조직 모델 없이 주최를 신청마다 적는다.
+    organizerName: varchar('organizer_name', { length: 100 }),
+    subtitle: varchar('subtitle', { length: 100 }),
+    location: varchar('location', { length: 100 }),
+    description: varchar('description', { length: 1000 }),
+
+    // 낙관적 잠금. 수정·상태 변경마다 1씩 오른다.
+    version: integer('version').notNull().default(1),
+    // 마지막으로 검토 대기에 들어간 시각. 검토 대기 시간과 대기 목록 정렬 기준.
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+
+    // 목록 cursor가 밀리초 단위라 앱에서 넣는다(DB의 마이크로초와 섞이면 경계 항목이 빠진다).
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index('submissions_requester_created_idx').on(
+      table.requesterId,
+      table.createdAt,
+    ),
+    index('submissions_status_submitted_idx').on(
+      table.status,
+      table.submittedAt,
+    ),
+    index('submissions_created_idx').on(table.createdAt),
+    // 공지 하나에 신청 하나. 취소한 신청은 세지 않아 다시 신청할 수 있다.
+    uniqueIndex('submissions_ziggle_notice_id_active_uq')
+      .on(table.ziggleNoticeId)
+      .where(sql`${table.status} <> 'CANCELED'`),
+    check('submissions_period_order', sql`${table.endAt} > ${table.startAt}`),
+  ],
+);
+
+/** 신청의 대상 위치 그룹. 없으면 전체 기기가 대상이다. */
+export const submissionTargetGroups = pgTable(
+  'submission_target_groups',
+  {
+    submissionId: uuid('submission_id')
+      .notNull()
+      .references(() => submissions.id, { onDelete: 'cascade' }),
+    targetGroupId: varchar('target_group_id', { length: 64 })
+      .notNull()
+      .references(() => targetGroups.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.submissionId, table.targetGroupId] }),
+  ],
+);
+
+export type Submission = typeof submissions.$inferSelect;
 
 export const idempotencyStatusEnum = pgEnum('idempotency_status', [
   'IN_PROGRESS',

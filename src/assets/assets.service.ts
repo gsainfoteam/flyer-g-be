@@ -175,12 +175,21 @@ export class AssetsService {
     return this.toDto(ready ?? (await this.findOwned(ownerId, assetId)));
   }
 
-  /** 신청 생성(Phase 3)에서 쓴다. 남의 asset이나 없는 asset은 404 */
-  async findOwned(ownerId: string, assetId: string): Promise<Asset> {
+  /** 남의 asset이나 없는 asset은 null */
+  async findOwnedOrNull(
+    ownerId: string,
+    assetId: string,
+  ): Promise<Asset | null> {
     const [asset] = await this.db
       .select()
       .from(assets)
       .where(and(eq(assets.id, assetId), eq(assets.ownerId, ownerId)));
+    return asset ?? null;
+  }
+
+  /** 남의 asset이나 없는 asset은 404 */
+  async findOwned(ownerId: string, assetId: string): Promise<Asset> {
+    const asset = await this.findOwnedOrNull(ownerId, assetId);
     if (!asset) {
       throw new AppException(
         HttpStatus.NOT_FOUND,

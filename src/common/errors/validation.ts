@@ -10,11 +10,16 @@ import { ErrorCode } from './error-code.js';
 export function validationExceptionFactory(
   errors: ValidationError[],
 ): AppException {
+  return validationFailed(flattenValidationErrors(errors));
+}
+
+/** 서비스에서 DB 조회가 필요한 검증(존재 여부 등)에 실패했을 때도 같은 형태로 준다. */
+export function validationFailed(fields: FieldErrors): AppException {
   return new AppException(
     HttpStatus.UNPROCESSABLE_ENTITY,
     ErrorCode.VALIDATION_FAILED,
     '입력값이 올바르지 않습니다.',
-    flattenValidationErrors(errors),
+    fields,
   );
 }
 
