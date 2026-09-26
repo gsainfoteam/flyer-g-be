@@ -13,7 +13,9 @@ describe('AppController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    await app.init();
+    // 파일 동안 포트를 하나로 고정한다. supertest가 요청마다 서버를 열고 닫으면
+    // 동시 요청 중 하나가 닫힌 서버에 걸려 끊긴다(socket hang up).
+    await app.listen(0);
   });
 
   it('/ (GET)', () => {
