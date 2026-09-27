@@ -33,6 +33,7 @@ import { DevicesService } from './devices.service.js';
 import { CreateDeviceDto, UpdateDeviceDto } from './dto/device-input.dto.js';
 import {
   DeviceDto,
+  DeviceListDto,
   DeviceSessionDto,
   DeviceWithTokenDto,
 } from './dto/device.dto.js';
@@ -63,13 +64,17 @@ export class DevicesController {
 
   @Get()
   @Roles('REVIEWER')
-  @ApiOperation({ summary: '기기 목록', description: '이름순. 검토자 이상.' })
-  @ApiOkResponse({ type: [DeviceDto] })
+  @ApiOperation({
+    summary: '기기 목록',
+    description:
+      '이름순. 검토자 이상. `serverTime`과 각 기기의 `lastSeenAt`으로 마지막 연결 경과 시간을 계산한다.',
+  })
+  @ApiOkResponse({ type: DeviceListDto })
   @ApiForbiddenResponse({
     description: 'REVIEWER·SUPER_ADMIN만 볼 수 있다',
     type: ErrorResponseDto,
   })
-  list(): Promise<DeviceDto[]> {
+  list(): Promise<DeviceListDto> {
     return this.devicesService.list();
   }
 
