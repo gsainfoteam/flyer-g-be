@@ -80,10 +80,16 @@ export class PlaylistDto {
 
   @ApiProperty({
     description:
-      '편성 내용(항목과 기기 화면 설정)의 해시. 같으면 내용이 같다. ETag 헤더와 같은 값이다',
+      '편성 내용(항목, 기기 이름, 기기 화면 설정)의 해시. 같으면 내용이 같다. ETag 헤더와 같은 값이다',
     example: '9f2b5c0e3a1d4f6b',
   })
   playlistVersion: string;
+
+  @ApiProperty({
+    description: '기기 이름. 관리자가 바꾸면 다음 편성에 반영된다',
+    example: 'A동 로비 TV',
+  })
+  deviceName: string;
 
   @ApiProperty({
     description: '다음 편성 요청까지 기다릴 시간(초)',

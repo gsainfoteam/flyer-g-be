@@ -15,6 +15,7 @@ import type {
 } from './dto/device-input.dto.js';
 import type {
   DeviceDto,
+  DeviceListDto,
   DeviceSessionDto,
   DeviceStatus,
   DeviceWithTokenDto,
@@ -31,14 +32,17 @@ export class DevicesService {
     private readonly auditService: AuditService,
   ) {}
 
-  async list(): Promise<DeviceDto[]> {
+  async list(): Promise<DeviceListDto> {
     const rows = await this.db
       .select()
       .from(devices)
       .orderBy(asc(devices.name), asc(devices.id));
     const groups = await this.groupIdsOf(rows.map((row) => row.id));
     const now = new Date();
-    return rows.map((row) => toDto(row, groups.get(row.id) ?? [], now));
+    return {
+      serverTime: now.toISOString(),
+      items: rows.map((row) => toDto(row, groups.get(row.id) ?? [], now)),
+    };
   }
 
   async findOne(id: string): Promise<DeviceDto> {

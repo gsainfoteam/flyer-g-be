@@ -111,6 +111,19 @@ export class DeviceDto {
   updatedAt: string;
 }
 
+/** 기기 목록. "마지막 연결 N분 전"을 서버 시각 기준으로 계산하도록 serverTime을 함께 준다. */
+export class DeviceListDto {
+  @ApiProperty({
+    description:
+      '서버 현재 시각(UTC). lastSeenAt과 비교해 마지막 연결 경과 시간을 계산한다',
+    example: '2026-07-29T06:30:00.000Z',
+  })
+  serverTime: string;
+
+  @ApiProperty({ description: '이름순', type: [DeviceDto] })
+  items: DeviceDto[];
+}
+
 /** 등록·재발급 응답. 토큰 원문은 이때 한 번만 보여 준다. */
 export class DeviceWithTokenDto extends DeviceDto {
   @ApiProperty({

@@ -115,6 +115,7 @@ export class ReviewsController {
   @Post('submissions/:id/reject')
   @HttpCode(200)
   @Roles('REVIEWER')
+  @Idempotent()
   @ApiOperation({
     summary: '반려',
     description:
@@ -149,6 +150,7 @@ export class ReviewsController {
   @Post('submissions/:id/suspend')
   @HttpCode(200)
   @Roles('REVIEWER')
+  @Idempotent()
   @ApiOperation({
     summary: '게시 중단',
     description: `승인된 게시(APPROVED·SCHEDULED·PUBLISHED, 기간이 끝나지 않은 것)를 내린다.

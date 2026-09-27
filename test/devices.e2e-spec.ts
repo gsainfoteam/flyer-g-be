@@ -152,7 +152,8 @@ describe('기기 등록과 인증 (e2e)', () => {
         .get('/signage/devices')
         .set('Authorization', reviewer.authHeader)
         .expect(200);
-      const found = list.body.find((d: { id: string }) => d.id === id);
+      expect(list.body.serverTime).toEqual(expect.any(String));
+      const found = list.body.items.find((d: { id: string }) => d.id === id);
       expect(found).toBeDefined();
       expect(found).not.toHaveProperty('token');
       expect(found).not.toHaveProperty('tokenHash');

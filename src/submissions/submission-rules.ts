@@ -73,13 +73,17 @@ export function validateSchedule(
   return errors;
 }
 
-/** 신청자가 내용을 고칠 수 있는 상태. 게시가 시작된 뒤에는 운영자에게 중단을 요청한다. */
+/**
+ * 신청자가 내용을 고칠 수 있는 상태. 게시가 시작된 뒤에는 운영자에게 중단을 요청한다.
+ * 중단된 신청도 사유를 보고 고쳐 다시 낼 수 있어야 한다(요구사항 6.3 SUSPENDED → PENDING_REVIEW).
+ */
 export const EDITABLE_STATUSES: readonly SubmissionStatus[] = [
   'DRAFT',
   'PENDING_REVIEW',
   'REJECTED',
   'APPROVED',
   'SCHEDULED',
+  'SUSPENDED',
 ];
 
 /** 승인된 내용을 고치면 다시 승인받아야 한다(FR-INT-02). */
@@ -88,10 +92,11 @@ export const REAPPROVAL_STATUSES: readonly SubmissionStatus[] = [
   'SCHEDULED',
 ];
 
-/** 검토를 다시 요청할 수 있는 상태 */
+/** 검토를 다시 요청할 수 있는 상태. 반려·중단된 신청을 고친 뒤 다시 낸다. */
 export const SUBMITTABLE_STATUSES: readonly SubmissionStatus[] = [
   'DRAFT',
   'REJECTED',
+  'SUSPENDED',
 ];
 
 /**

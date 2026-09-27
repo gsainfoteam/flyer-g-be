@@ -104,9 +104,11 @@ export class PlaylistService {
       serverTime: now.toISOString(),
       playlistVersion: playlistVersionOf({
         items,
+        deviceName: device.name,
         layout,
         refreshAfterSeconds: device.refreshAfterSeconds,
       }),
+      deviceName: device.name,
       refreshAfterSeconds: device.refreshAfterSeconds,
       layout,
       items,
@@ -117,9 +119,11 @@ export class PlaylistService {
 /**
  * 편성 내용의 해시. serverTime처럼 매번 바뀌는 값은 넣지 않는다.
  * 게시물이 기간에 들어오거나 나가도 items가 바뀌므로 버전이 바뀐다.
+ * 기기 이름도 넣는다. 이름만 바꿔도 304가 아닌 새 편성을 받아 화면에 반영한다.
  */
 export function playlistVersionOf(content: {
   items: PlaylistItemDto[];
+  deviceName: string;
   layout: { type: string; rotationSeconds: number };
   refreshAfterSeconds: number;
 }): string {

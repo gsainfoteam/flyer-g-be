@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { asc, eq } from 'drizzle-orm';
+import { asc, desc, eq } from 'drizzle-orm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { DB_CONNECTION, type Database } from '../src/db/index.js';
@@ -93,16 +93,28 @@ describe('검토와 승인 (e2e)', () => {
       .set('Idempotency-Key', randomUUID())
       .send({ revision });
 
-  const reject = (id: string, body: object, user = reviewer) =>
+  const reject = (
+    id: string,
+    body: object,
+    user = reviewer,
+    key: string = randomUUID(),
+  ) =>
     request(server())
       .post(`/signage/submissions/${id}/reject`)
       .set('Authorization', user.authHeader)
+      .set('Idempotency-Key', key)
       .send(body);
 
-  const suspend = (id: string, body: object, user = reviewer) =>
+  const suspend = (
+    id: string,
+    body: object,
+    user = reviewer,
+    key: string = randomUUID(),
+  ) =>
     request(server())
       .post(`/signage/submissions/${id}/suspend`)
       .set('Authorization', user.authHeader)
+      .set('Idempotency-Key', key)
       .send(body);
 
   const get = (path: string, user: TestUser) =>
@@ -275,6 +287,118 @@ describe('검토와 승인 (e2e)', () => {
       await approve(id, 1).expect(200);
       const res = await suspend(id, { reason: '' }).expect(422);
       expect(res.body.fields).toEqual({ reason: '중단 사유를 입력하세요.' });
+    });
+  });
+
+  describe('반려·중단의 Idempotency-Key', () => {
+    it('같은 key로 다시 보내면 처리하지 않고 처음 응답을 준다', async () => {
+      const { id } = await submission();
+      const key = randomUUID();
+      const body = {
+        revision: 1,
+        reasonCode: 'OTHER',
+        comment: '다시 확인해 주세요.',
+      };
+      const first = await reject(id, body, reviewer, key).expect(200);
+      const retry = await reject(id, body, reviewer, key).expect(200);
+
+      expect(retry.body).toEqual(first.body);
+      expect(retry.headers['idempotent-replayed']).toBe('true');
+      const rows = await db
+        .select()
+        .from(reviews)
+        .where(eq(reviews.submissionId, id));
+      expect(rows).toHaveLength(1);
+    });
+
+    it('중단도 같은 key의 재시도는 처음 응답을 준다', async () => {
+      const { id } = await submission();
+      await approve(id, 1).expect(200);
+      const key = randomUUID();
+      const first = await suspend(
+        id,
+        { reason: '행사 취소' },
+        reviewer,
+        key,
+      ).expect(200);
+      const retry = await suspend(
+        id,
+        { reason: '행사 취소' },
+        reviewer,
+        key,
+      ).expect(200);
+      expect(retry.body.version).toBe(first.body.version);
+      expect(retry.headers['idempotent-replayed']).toBe('true');
+    });
+
+    it('헤더가 없으면 400', async () => {
+      const { id } = await submission();
+      await request(server())
+        .post(`/signage/submissions/${id}/reject`)
+        .set('Authorization', reviewer.authHeader)
+        .send({ revision: 1, reasonCode: 'OTHER', comment: 'x' })
+        .expect(400);
+      await request(server())
+        .post(`/signage/submissions/${id}/suspend`)
+        .set('Authorization', reviewer.authHeader)
+        .send({ reason: 'x' })
+        .expect(400);
+    });
+  });
+
+  describe('중단 후 고쳐 다시 내기', () => {
+    it('중단된 신청을 고치고(상태 유지) 재검토를 요청하면 검토 대기로 돌아간다', async () => {
+      const { id } = await submission();
+      await approve(id, 1).expect(200);
+      await suspend(id, { reason: '포스터 교체 필요' }).expect(200);
+
+      const edited = await request(server())
+        .patch(`/signage/submissions/${id}`)
+        .set('Authorization', requester.authHeader)
+        .send({ version: 3, title: '고친 포스터' })
+        .expect(200);
+      expect(edited.body).toMatchObject({
+        status: 'SUSPENDED',
+        title: '고친 포스터',
+        version: 4,
+      });
+
+      const resubmitted = await request(server())
+        .post(`/signage/submissions/${id}/submit`)
+        .set('Authorization', requester.authHeader)
+        .set('Idempotency-Key', randomUUID())
+        .send({ version: 4 })
+        .expect(200);
+      expect(resubmitted.body).toMatchObject({
+        status: 'PENDING_REVIEW',
+        version: 5,
+      });
+
+      const [log] = await db
+        .select({ metadata: auditLogs.metadata })
+        .from(auditLogs)
+        .where(eq(auditLogs.targetId, id))
+        .orderBy(desc(auditLogs.createdAt))
+        .limit(1);
+      expect(log.metadata).toEqual({ fromStatus: 'SUSPENDED' });
+    });
+
+    it('기간이 이미 시작된 중단 건은 기간을 고쳐야 다시 낼 수 있다', async () => {
+      const { id } = await submission();
+      await approve(id, 1).expect(200);
+      await suspend(id, { reason: '중단' }).expect(200);
+      await setRow(id, {
+        startAt: new Date(Date.now() - HOUR),
+        endAt: new Date(Date.now() + 48 * HOUR),
+      });
+
+      const res = await request(server())
+        .post(`/signage/submissions/${id}/submit`)
+        .set('Authorization', requester.authHeader)
+        .set('Idempotency-Key', randomUUID())
+        .send({ version: 3 })
+        .expect(422);
+      expect(res.body.fields).toHaveProperty('startAt');
     });
   });
 
