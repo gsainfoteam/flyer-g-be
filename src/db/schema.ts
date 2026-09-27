@@ -248,10 +248,11 @@ export const submissions = pgTable(
       table.submittedAt,
     ),
     index('submissions_created_idx').on(table.createdAt),
-    // 공지 하나에 신청 하나. 취소한 신청은 세지 않아 다시 신청할 수 있다.
+    // 공지 하나에 신청 하나. 끝난 신청(취소·종료·보관)은 세지 않아 같은 공지로 다시 신청할 수 있다
+    // (같은 행사를 다시 알리는 등). 세 상태는 다시 살아나지 않으므로 두 신청이 동시에 살아 있을 수 없다.
     uniqueIndex('submissions_ziggle_notice_id_active_uq')
       .on(table.ziggleNoticeId)
-      .where(sql`${table.status} <> 'CANCELED'`),
+      .where(sql`${table.status} not in ('CANCELED', 'ENDED', 'ARCHIVED')`),
     check('submissions_period_order', sql`${table.endAt} > ${table.startAt}`),
   ],
 );

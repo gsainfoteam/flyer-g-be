@@ -387,7 +387,7 @@ export class SubmissionsService {
     return this.detail(id, now);
   }
 
-  /** 반려된 신청을 고친 뒤 다시 검토를 요청한다. */
+  /** 반려·중단된 신청을 고친 뒤 다시 검토를 요청한다. */
   async submit(
     user: AuthUser,
     id: string,
@@ -411,6 +411,7 @@ export class SubmissionsService {
         actor: { type: 'USER', id: user.id },
         action: 'SUBMISSION_RESUBMITTED',
         target: { type: 'SUBMISSION', id },
+        metadata: { fromStatus: current.status },
         at: now,
       });
     });

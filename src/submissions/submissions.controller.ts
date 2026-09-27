@@ -81,13 +81,13 @@ export class SubmissionsController {
 - 제목: 앞뒤 공백 제거 후 1~80자
 - 포스터: 본인이 올려 complete까지 끝낸 asset
 - 기간: 시작은 지금부터 24시간 이후, 종료는 시작보다 뒤, 최대 3개월(서울 달력)
-- 상세 링크(선택): 허용된 호스트의 HTTPS. Ziggle 공지 주소(\`/notice/{id}\`)면 공지 ID를 뽑아 **공지 하나에 신청 하나**를 지킨다. 취소한 신청은 세지 않는다
+- 상세 링크(선택): 허용된 호스트의 HTTPS. Ziggle 공지 주소(\`/notice/{id}\`)면 공지 ID를 뽑아 **공지 하나에 신청 하나**를 지킨다. 끝난 신청(취소·종료·보관)은 세지 않는다
 - 대상 위치(선택): 숨기지 않은 그룹. 비우면 전체 기기`,
   })
   @ApiCreatedResponse({ type: SubmissionDetailDto })
   @ApiConflictResponse({
     description:
-      '같은 공지로 이미 신청함 (ALREADY_SUBMITTED, fields.detailUrl). 반려된 신청은 새로 만들지 말고 수정 후 다시 제출한다',
+      '같은 공지로 진행 중인 신청이 있음 (ALREADY_SUBMITTED, fields.detailUrl). 반려·중단된 신청은 새로 만들지 말고 수정 후 다시 제출한다',
     type: ErrorResponseDto,
   })
   @ApiUnprocessableEntityResponse(VALIDATION_DOC)
@@ -160,11 +160,11 @@ export class SubmissionsController {
 
 | 현재 상태 | 수정 후 상태 |
 |---|---|
-| PENDING_REVIEW, REJECTED, DRAFT | 그대로 |
+| PENDING_REVIEW, REJECTED, SUSPENDED, DRAFT | 그대로 |
 | APPROVED, SCHEDULED (게시 시작 전) | **PENDING_REVIEW** (재승인 필요) |
 | 게시가 시작됐거나 그 외 상태 | 409 CONFLICT (중단은 운영자에게 요청) |
 
-반려된 신청은 고친 뒤 \`POST /signage/submissions/{id}/submit\`으로 다시 검토를 요청한다.`,
+반려·중단된 신청은 고친 뒤 \`POST /signage/submissions/{id}/submit\`으로 다시 검토를 요청한다.`,
   })
   @ApiParam(ID_PARAM)
   @ApiOkResponse({ type: SubmissionDetailDto })
@@ -189,13 +189,13 @@ export class SubmissionsController {
   @ApiOperation({
     summary: '재검토 요청',
     description:
-      '반려(REJECTED)된 신청을 다시 검토 대기(PENDING_REVIEW)로 보낸다. 기간 규칙을 지금 시각으로 다시 검사한다.',
+      '반려(REJECTED)·중단(SUSPENDED)된 신청을 다시 검토 대기(PENDING_REVIEW)로 보낸다. 기간 규칙을 지금 시각으로 다시 검사하므로, 시작이 지났으면 먼저 기간을 고친다.',
   })
   @ApiParam(ID_PARAM)
   @ApiOkResponse({ type: SubmissionDetailDto })
   @ApiNotFoundResponse(NOT_FOUND_DOC)
   @ApiConflictResponse({
-    description: 'version이 최신이 아니거나 REJECTED·DRAFT가 아님',
+    description: 'version이 최신이 아니거나 REJECTED·SUSPENDED·DRAFT가 아님',
     type: ErrorResponseDto,
   })
   @ApiUnprocessableEntityResponse({
@@ -212,6 +212,7 @@ export class SubmissionsController {
 
   @Post(':id/cancel')
   @HttpCode(200)
+  @Idempotent()
   @ApiOperation({
     summary: '신청 취소',
     description:

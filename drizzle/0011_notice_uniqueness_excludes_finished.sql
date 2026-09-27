@@ -1,0 +1,2 @@
+DROP INDEX "submissions_ziggle_notice_id_active_uq";--> statement-breakpoint
+CREATE UNIQUE INDEX "submissions_ziggle_notice_id_active_uq" ON "submissions" USING btree ("ziggle_notice_id") WHERE "submissions"."status" not in ('CANCELED', 'ENDED', 'ARCHIVED');

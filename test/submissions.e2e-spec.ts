@@ -198,6 +198,28 @@ describe('게시 신청 (e2e)', () => {
       await create(validBody({ detailUrl })).expect(201);
     });
 
+    it.each(['ENDED', 'ARCHIVED'] as const)(
+      '%s로 끝난 공지는 다시 신청할 수 있다',
+      async (finished) => {
+        const detailUrl = noticeUrl();
+        const first = await create(validBody({ detailUrl })).expect(201);
+        await setStatus(first.body.id, finished);
+
+        await create(validBody({ detailUrl })).expect(201);
+      },
+    );
+
+    it('중단·반려된 신청이 있는 공지는 새로 신청할 수 없다 (고쳐서 다시 낸다)', async () => {
+      for (const status of ['SUSPENDED', 'REJECTED'] as const) {
+        const detailUrl = noticeUrl();
+        const first = await create(validBody({ detailUrl })).expect(201);
+        await setStatus(first.body.id, status);
+
+        const res = await create(validBody({ detailUrl })).expect(409);
+        expect(res.body.code).toBe('ALREADY_SUBMITTED');
+      }
+    });
+
     it('상세 링크 없이도 신청할 수 있다', async () => {
       const res = await create(validBody({ detailUrl: undefined })).expect(201);
       expect(res.body).toMatchObject({ detailUrl: null, ziggleNoticeId: null });
@@ -508,6 +530,27 @@ describe('게시 신청 (e2e)', () => {
         endAt: new Date(Date.now() + HOUR),
       });
       await action(b.body.id, 'cancel', 1).expect(409);
+    });
+
+    it('취소는 Idempotency-Key가 필요하고, 같은 key의 재시도는 처음 응답을 준다', async () => {
+      const created = await create(validBody()).expect(201);
+      await request(app.getHttpServer())
+        .post(`/signage/submissions/${created.body.id}/cancel`)
+        .set('Authorization', owner.authHeader)
+        .send({ version: 1 })
+        .expect(400);
+
+      const key = randomUUID();
+      const cancel = () =>
+        request(app.getHttpServer())
+          .post(`/signage/submissions/${created.body.id}/cancel`)
+          .set('Authorization', owner.authHeader)
+          .set('Idempotency-Key', key)
+          .send({ version: 1 });
+      const first = await cancel().expect(200);
+      const retry = await cancel().expect(200);
+      expect(retry.body).toEqual(first.body);
+      expect(retry.headers['idempotent-replayed']).toBe('true');
     });
 
     it('취소는 version을 확인한다', async () => {
