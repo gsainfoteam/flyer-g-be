@@ -270,6 +270,7 @@ describe('편성 (e2e)', () => {
       organizerName: '공연동아리',
     });
     expect(res.body).toMatchObject({
+      deviceName: 'E2E 편성 TV',
       refreshAfterSeconds: 60,
       layout: { type: 'SINGLE', rotationSeconds: 15 },
       serverTime: expect.any(String),
@@ -308,6 +309,21 @@ describe('편성 (e2e)', () => {
       ).not.toContain(id);
       // 원래 편성으로 돌아왔으니 처음 버전과 같다
       expect(removed.body.playlistVersion).toBe(first.body.playlistVersion);
+    });
+
+    it('기기 이름이 바뀌면 버전이 바뀌고 새 이름을 준다', async () => {
+      const first = await fetchPlaylist(inGroup2).expect(200);
+      await request(app.getHttpServer())
+        .patch(`/signage/devices/${inGroup2.id}`)
+        .set('Authorization', admin.authHeader)
+        .send({ name: 'E2E 편성 TV (이름 변경)' })
+        .expect(200);
+
+      const next = await fetchPlaylist(inGroup2, first.headers.etag).expect(
+        200,
+      );
+      expect(next.body.deviceName).toBe('E2E 편성 TV (이름 변경)');
+      expect(next.body.playlistVersion).not.toBe(first.body.playlistVersion);
     });
 
     it('기기 화면 설정이 바뀌어도 버전이 바뀐다', async () => {
