@@ -1,10 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
+  IsArray,
   IsIn,
   IsOptional,
   IsString,
-  Matches,
   MaxLength,
 } from 'class-validator';
 import {
@@ -12,6 +12,7 @@ import {
   LimitField,
 } from '../../common/pagination/cursor-query.dto.js';
 import { auditActorTypeEnum } from '../../db/schema.js';
+import { AUDIT_ACTIONS, type AuditAction } from '../audit.service.js';
 
 export const AUDIT_TARGET_TYPES = ['SUBMISSION', 'DEVICE'] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
@@ -22,7 +23,7 @@ const emptyToUndefined = ({ value }: { value: unknown }) =>
 export class ListAuditLogsQueryDto {
   @ApiPropertyOptional({
     description:
-      '대상 종류. 검토자가 아니면 SUBMISSION과 본인 신청의 targetId를 함께 보내야 한다',
+      '대상 종류. 검토자가 아니면 SUBMISSION을 보내야 한다 (targetId를 비우면 본인 신청 전체)',
     enum: AUDIT_TARGET_TYPES,
   })
   @Transform(emptyToUndefined)
@@ -41,13 +42,22 @@ export class ListAuditLogsQueryDto {
   targetId?: string;
 
   @ApiPropertyOptional({
-    description: '행위 필터',
-    example: 'SUBMISSION_APPROVED',
+    description:
+      '행위 필터. 쉼표로 여러 개를 보내면 그중 하나에 해당하는 로그를 준다. 모르는 값이 섞이면 422',
+    example: 'SUBMISSION_APPROVED,SUBMISSION_REJECTED,SUBMISSION_SUSPENDED',
+    type: String,
   })
-  @Transform(emptyToUndefined)
+  @Transform(({ value }) => {
+    // action=A,B와 action=A&action=B를 같게 받는다
+    const raw: unknown = Array.isArray(value) ? value.join(',') : value;
+    return typeof raw === 'string' && raw !== ''
+      ? [...new Set(raw.split(',').map((action) => action.trim()))]
+      : undefined;
+  })
   @IsOptional()
-  @Matches(/^[A-Z_]{1,64}$/, { message: '행위 형식이 올바르지 않습니다.' })
-  action?: string;
+  @IsArray()
+  @IsIn(AUDIT_ACTIONS, { each: true, message: '알 수 없는 행위가 있습니다.' })
+  action?: AuditAction[];
 
   @CursorField()
   cursor?: string;
@@ -86,7 +96,11 @@ export class AuditLogDto {
 
   @ApiProperty({
     description: `행위. 신청: SUBMISSION_CREATED, _UPDATED, _RESUBMITTED, _CANCELED, _APPROVED, _REJECTED, _SUSPENDED, _SCHEDULED, _PUBLISHED, _ENDED
-기기: DEVICE_REGISTERED, DEVICE_UPDATED, DEVICE_TOKEN_ROTATED`,
+기기: DEVICE_REGISTERED, DEVICE_UPDATED, DEVICE_TOKEN_ROTATED
+
+- _SCHEDULED·_PUBLISHED·_ENDED는 1분마다 도는 주기 작업이 기간에 맞춰 상태를 바꿀 때 actorType SYSTEM으로 남는다. 실제 시작·종료 시각보다 최대 1분 늦게 찍힐 수 있다
+- 시작 시각이 이미 지난 신청을 승인하면 바로 게시되어 _PUBLISHED 없이 _APPROVED 하나만 남는다. 이때 metadata.toStatus가 PUBLISHED다
+- 중단(_SUSPENDED)된 게시에는 _ENDED가 남지 않는다`,
     example: 'SUBMISSION_APPROVED',
   })
   action: string;
@@ -98,7 +112,17 @@ export class AuditLogDto {
   targetId: string;
 
   @ApiProperty({
-    description: '반려 의견·중단 사유 등',
+    description:
+      '대상의 표시 이름. SUBMISSION이면 신청의 현재 제목, DEVICE면 기기의 현재 이름(로그를 쓸 때가 아니라 조회 시점 값). 대상이 지워졌으면 null',
+    type: String,
+    nullable: true,
+    example: '2026 GIST 가을 축제',
+  })
+  targetTitle: string | null;
+
+  @ApiProperty({
+    description:
+      '반려 의견(_REJECTED)·중단 사유(_SUSPENDED). 검토자가 반려·중단 때 입력한 값(RejectSubmissionDto.comment, SuspendSubmissionDto.reason) 그대로라 신청자에게 보여도 된다. 그 외 행위는 null',
     type: String,
     nullable: true,
     example: null,

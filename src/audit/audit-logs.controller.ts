@@ -28,17 +28,21 @@ export class AuditLogsController {
     summary: '감사 로그',
     description: `누가 언제 무엇을 바꿨는지. 최신순이다.
 
-- 검토자(REVIEWER·SUPER_ADMIN): 전체 로그. \`targetType\`·\`targetId\`·\`action\`으로 거를 수 있다
-- 그 외 사용자: 신청 상세 화면용으로 \`targetType=SUBMISSION&targetId=<본인 신청 ID>\`만 쓸 수 있다
+- 검토자(REVIEWER·SUPER_ADMIN): 전체 로그. \`targetType\`·\`targetId\`·\`action\`으로 거를 수 있다. \`action\`은 쉼표로 여러 개를 보낼 수 있다
+- 그 외 사용자: 본인 신청의 로그만 본다. \`targetType=SUBMISSION\`은 꼭 보내야 한다
+  - \`targetId=<본인 신청 ID>\`: 그 신청의 로그 (신청 상세 화면)
+  - \`targetId\`를 비우면: 본인 신청 전체의 로그 (홈 "최근 소식"). 기기 로그나 다른 사람 신청의 로그는 섞이지 않는다
+  - \`action\` 필터는 함께 쓸 수 있다
 - 주기 작업이 바꾼 상태는 \`actorType: SYSTEM\`으로 남는다`,
   })
   @ApiPageResponse(AuditLogDto)
   @ApiForbiddenResponse({
-    description: '검토자가 아닌데 본인 신청이 아닌 로그를 요청함',
+    description:
+      '검토자가 아닌데 targetType=SUBMISSION 없이 요청했거나, 본인 신청이 아닌 targetId를 요청함',
     type: ErrorResponseDto,
   })
   @ApiUnprocessableEntityResponse({
-    description: '알 수 없는 대상 종류·행위 형식, 잘못된 limit',
+    description: '알 수 없는 대상 종류·행위, 잘못된 limit',
     type: ErrorResponseDto,
   })
   list(

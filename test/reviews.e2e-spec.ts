@@ -402,6 +402,84 @@ describe('검토와 승인 (e2e)', () => {
     });
   });
 
+  describe('직전 검토 결과 (lastDecision)', () => {
+    const detail = (id: string) =>
+      get(`/signage/submissions/${id}`, requester).expect(200);
+    const edit = (id: string, version: number, body: object) =>
+      request(server())
+        .patch(`/signage/submissions/${id}`)
+        .set('Authorization', requester.authHeader)
+        .send({ version, ...body })
+        .expect(200);
+    const resubmit = (id: string, version: number) =>
+      request(server())
+        .post(`/signage/submissions/${id}/submit`)
+        .set('Authorization', requester.authHeader)
+        .set('Idempotency-Key', randomUUID())
+        .send({ version })
+        .expect(200);
+
+    it('처음 낸 신청은 null이고, 목록·검토 대기에도 같이 온다', async () => {
+      const created = await submission({ categoryId: 'performance' });
+      expect(created).toHaveProperty('lastDecision', null);
+
+      const queue = await get(
+        '/signage/reviews?categoryId=performance&limit=100',
+        reviewer,
+      ).expect(200);
+      expect(
+        queue.body.items.find((s: { id: string }) => s.id === created.id),
+      ).toHaveProperty('lastDecision', null);
+    });
+
+    it('반려 뒤 고쳐서 다시 내면 REJECTED', async () => {
+      const { id } = await submission();
+      await reject(id, {
+        revision: 1,
+        reasonCode: 'INFO_MISMATCH',
+        comment: '장소를 확인해 주세요.',
+      }).expect(200);
+      await edit(id, 2, { location: '대강당' });
+      const res = await resubmit(id, 3);
+
+      expect(res.body).toMatchObject({
+        status: 'PENDING_REVIEW',
+        lastDecision: 'REJECTED',
+      });
+      const list = await get(
+        '/signage/submissions?statuses=PENDING_REVIEW&limit=100',
+        requester,
+      ).expect(200);
+      expect(
+        list.body.items.find((s: { id: string }) => s.id === id),
+      ).toHaveProperty('lastDecision', 'REJECTED');
+    });
+
+    it('중단 뒤 다시 내면 SUSPENDED', async () => {
+      const { id } = await submission();
+      await approve(id, 1).expect(200);
+      await suspend(id, { reason: '포스터 교체 필요' }).expect(200);
+      await edit(id, 3, { title: '고친 포스터' });
+      await resubmit(id, 4);
+
+      expect((await detail(id)).body).toMatchObject({
+        status: 'PENDING_REVIEW',
+        lastDecision: 'SUSPENDED',
+      });
+    });
+
+    it('승인 뒤 수정해 재승인이 필요하면 APPROVED', async () => {
+      const { id } = await submission();
+      await approve(id, 1).expect(200);
+      const edited = await edit(id, 2, { title: '제목 바꿈' });
+
+      expect(edited.body).toMatchObject({
+        status: 'PENDING_REVIEW',
+        lastDecision: 'APPROVED',
+      });
+    });
+  });
+
   describe('전체 흐름과 기록', () => {
     it('반려 → 수정 → 재제출 → 승인 → 중단이 이력과 감사 로그에 남는다', async () => {
       const { id } = await submission();

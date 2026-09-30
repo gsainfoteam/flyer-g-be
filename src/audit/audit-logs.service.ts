@@ -1,5 +1,5 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import type { AuthUser } from '../auth/types/auth-user.js';
 import { isReviewer } from '../auth/types/role.js';
@@ -8,13 +8,16 @@ import { ErrorCode } from '../common/errors/error-code.js';
 import { decodeCursor } from '../common/pagination/cursor.js';
 import { toPage, type Page } from '../common/pagination/page.js';
 import { DB_CONNECTION, type Database } from '../db/index.js';
-import { auditLogs, submissions, users } from '../db/schema.js';
+import { auditLogs, devices, submissions, users } from '../db/schema.js';
 import type {
   AuditLogDto,
   ListAuditLogsQueryDto,
 } from './dto/audit-log.dto.js';
 
 const cursorSchema = z.tuple([z.iso.datetime(), z.uuid()]);
+const uuidSchema = z.uuid();
+
+type AuditLogRow = typeof auditLogs.$inferSelect;
 
 /**
  * 감사 로그 조회 (요구사항 11.2). 운영자(검토자 이상)는 전체를, 신청자는 본인 신청의 로그만 본다.
@@ -28,13 +31,14 @@ export class AuditLogsService {
     user: AuthUser,
     query: ListAuditLogsQueryDto,
   ): Promise<Page<AuditLogDto>> {
-    await this.assertCanView(user, query);
+    const visible = await this.visibleTo(user, query);
     const now = new Date();
 
     const filter = and(
+      visible,
       query.targetType ? eq(auditLogs.targetType, query.targetType) : undefined,
       query.targetId ? eq(auditLogs.targetId, query.targetId) : undefined,
-      query.action ? eq(auditLogs.action, query.action) : undefined,
+      query.action ? inArray(auditLogs.action, query.action) : undefined,
     );
     let pageFilter = filter;
     if (query.cursor) {
@@ -65,6 +69,7 @@ export class AuditLogsService {
         .from(auditLogs)
         .where(filter),
     ]);
+    const titles = await this.targetTitlesOf(rows.map(({ log }) => log));
 
     return toPage(rows, {
       limit: query.limit,
@@ -79,6 +84,7 @@ export class AuditLogsService {
         action: log.action,
         targetType: log.targetType,
         targetId: log.targetId,
+        targetTitle: titles.get(titleKey(log)) ?? null,
         reason: log.reason,
         metadata: (log.metadata as Record<string, unknown> | null) ?? null,
         createdAt: log.createdAt.toISOString(),
@@ -87,13 +93,75 @@ export class AuditLogsService {
     });
   }
 
-  /** 검토자가 아니면 본인 신청 하나의 로그만 볼 수 있다. */
-  private async assertCanView(
+  /**
+   * 대상의 현재 표시 이름 (신청 제목, 기기 이름). 로그를 쓸 때가 아니라 지금 값이다.
+   * target_id는 문자열이라 JOIN하면 uuid 인덱스를 못 쓰므로, 페이지를 받은 뒤 종류별로 한 번씩 찾는다.
+   */
+  private async targetTitlesOf(
+    logs: AuditLogRow[],
+  ): Promise<Map<string, string>> {
+    const idsOf = (type: AuditLogRow['targetType']) => [
+      ...new Set(
+        logs
+          .filter((log) => log.targetType === type)
+          .map((log) => log.targetId)
+          .filter((id) => uuidSchema.safeParse(id).success),
+      ),
+    ];
+    const submissionIds = idsOf('SUBMISSION');
+    const deviceIds = idsOf('DEVICE');
+
+    const [submissionRows, deviceRows] = await Promise.all([
+      submissionIds.length
+        ? this.db
+            .select({ id: submissions.id, title: submissions.title })
+            .from(submissions)
+            .where(inArray(submissions.id, submissionIds))
+        : [],
+      deviceIds.length
+        ? this.db
+            .select({ id: devices.id, title: devices.name })
+            .from(devices)
+            .where(inArray(devices.id, deviceIds))
+        : [],
+    ]);
+
+    const titles = new Map<string, string>();
+    for (const row of submissionRows) {
+      titles.set(
+        titleKey({ targetType: 'SUBMISSION', targetId: row.id }),
+        row.title,
+      );
+    }
+    for (const row of deviceRows) {
+      titles.set(
+        titleKey({ targetType: 'DEVICE', targetId: row.id }),
+        row.title,
+      );
+    }
+    return titles;
+  }
+
+  /**
+   * 검토자는 전체를 본다. 그 외 사용자는 본인 신청의 로그만 본다:
+   * targetId를 주면 그 신청이 본인 것인지 확인하고, 비우면 본인 신청 전체로 좁힌다.
+   * 돌려준 조건은 목록과 건수 모두에 붙는다.
+   */
+  private async visibleTo(
     user: AuthUser,
     query: ListAuditLogsQueryDto,
-  ): Promise<void> {
+  ): Promise<SQL | undefined> {
     if (isReviewer(user.roles)) {
-      return;
+      return undefined;
+    }
+    if (query.targetType === 'SUBMISSION' && !query.targetId) {
+      return inArray(
+        auditLogs.targetId,
+        this.db
+          .select({ id: sql<string>`${submissions.id}::text` })
+          .from(submissions)
+          .where(eq(submissions.requesterId, user.id)),
+      );
     }
     if (query.targetType === 'SUBMISSION' && query.targetId) {
       const [own] = await this.db
@@ -106,7 +174,7 @@ export class AuditLogsService {
           ),
         );
       if (own) {
-        return;
+        return undefined;
       }
     }
     throw new AppException(
@@ -115,4 +183,8 @@ export class AuditLogsService {
       'Only reviewers can view audit logs other than their own submissions',
     );
   }
+}
+
+function titleKey(log: Pick<AuditLogRow, 'targetType' | 'targetId'>): string {
+  return `${log.targetType}:${log.targetId}`;
 }

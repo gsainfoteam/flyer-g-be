@@ -1,6 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  reviewDecisionEnum,
   submissionStatusEnum,
+  type ReviewDecision,
   type SubmissionStatus,
 } from '../../db/schema.js';
 
@@ -114,6 +116,15 @@ export class SubmissionDto {
     example: 1,
   })
   version: number;
+
+  @ApiProperty({
+    description: `가장 최근 검토 결정 (검토 이력 중 reviewedAt이 가장 늦은 것). 한 번도 검토되지 않았으면 null.
+상태가 PENDING_REVIEW일 때 null이면 처음 낸 신청, REJECTED면 반려 뒤 고쳐서 다시 냄, SUSPENDED면 중단 뒤 다시 냄, APPROVED면 승인 뒤 수정해 재승인이 필요함`,
+    enum: reviewDecisionEnum.enumValues,
+    nullable: true,
+    example: 'REJECTED',
+  })
+  lastDecision: ReviewDecision | null;
 
   @ApiProperty({
     description: '마지막으로 검토를 요청한 시각',
