@@ -96,7 +96,11 @@ export class AuditLogDto {
 
   @ApiProperty({
     description: `행위. 신청: SUBMISSION_CREATED, _UPDATED, _RESUBMITTED, _CANCELED, _APPROVED, _REJECTED, _SUSPENDED, _SCHEDULED, _PUBLISHED, _ENDED
-기기: DEVICE_REGISTERED, DEVICE_UPDATED, DEVICE_TOKEN_ROTATED`,
+기기: DEVICE_REGISTERED, DEVICE_UPDATED, DEVICE_TOKEN_ROTATED
+
+- _SCHEDULED·_PUBLISHED·_ENDED는 1분마다 도는 주기 작업이 기간에 맞춰 상태를 바꿀 때 actorType SYSTEM으로 남는다. 실제 시작·종료 시각보다 최대 1분 늦게 찍힐 수 있다
+- 시작 시각이 이미 지난 신청을 승인하면 바로 게시되어 _PUBLISHED 없이 _APPROVED 하나만 남는다. 이때 metadata.toStatus가 PUBLISHED다
+- 중단(_SUSPENDED)된 게시에는 _ENDED가 남지 않는다`,
     example: 'SUBMISSION_APPROVED',
   })
   action: string;
@@ -117,7 +121,8 @@ export class AuditLogDto {
   targetTitle: string | null;
 
   @ApiProperty({
-    description: '반려 의견·중단 사유 등',
+    description:
+      '반려 의견(_REJECTED)·중단 사유(_SUSPENDED). 검토자가 반려·중단 때 입력한 값(RejectSubmissionDto.comment, SuspendSubmissionDto.reason) 그대로라 신청자에게 보여도 된다. 그 외 행위는 null',
     type: String,
     nullable: true,
     example: null,
