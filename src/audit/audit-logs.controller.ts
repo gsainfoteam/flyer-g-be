@@ -29,6 +29,7 @@ export class AuditLogsController {
     description: `누가 언제 무엇을 바꿨는지. 최신순이다.
 
 - 검토자(REVIEWER·SUPER_ADMIN): 전체 로그. \`targetType\`·\`targetId\`·\`action\`으로 거를 수 있다. \`action\`은 쉼표로 여러 개를 보낼 수 있다
+  - 사용자 역할 변경(\`targetType: USER\`) 로그는 SUPER_ADMIN만 본다. REVIEWER의 목록에서는 빠지고, \`targetType=USER\`로 요청하면 403
 - 그 외 사용자: 본인 신청의 로그만 본다. \`targetType=SUBMISSION\`은 꼭 보내야 한다
   - \`targetId=<본인 신청 ID>\`: 그 신청의 로그 (신청 상세 화면)
   - \`targetId\`를 비우면: 본인 신청 전체의 로그 (홈 "최근 소식"). 기기 로그나 다른 사람 신청의 로그는 섞이지 않는다
@@ -38,7 +39,7 @@ export class AuditLogsController {
   @ApiPageResponse(AuditLogDto)
   @ApiForbiddenResponse({
     description:
-      '검토자가 아닌데 targetType=SUBMISSION 없이 요청했거나, 본인 신청이 아닌 targetId를 요청함',
+      '검토자가 아닌데 targetType=SUBMISSION 없이 요청했거나, 본인 신청이 아닌 targetId를 요청함. SUPER_ADMIN이 아닌데 targetType=USER를 요청함',
     type: ErrorResponseDto,
   })
   @ApiUnprocessableEntityResponse({

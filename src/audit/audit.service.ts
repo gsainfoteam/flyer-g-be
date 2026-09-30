@@ -21,10 +21,17 @@ export const AUDIT_ACTIONS = [
   'GROUP_CREATED',
   'GROUP_UPDATED',
   'GROUP_DELETED',
+  'USER_ROLE_GRANTED',
+  'USER_ROLE_REVOKED',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
-export const AUDIT_TARGET_TYPES = ['SUBMISSION', 'DEVICE', 'GROUP'] as const;
+export const AUDIT_TARGET_TYPES = [
+  'SUBMISSION',
+  'DEVICE',
+  'GROUP',
+  'USER',
+] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
 export type AuditEntry = {
