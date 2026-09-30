@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { DB_CONNECTION, type Database } from '../../src/db/index.js';
 import {
   assets,
@@ -56,6 +56,14 @@ export async function createTestUser(
       await db.delete(submissions).where(eq(submissions.requesterId, user.id));
       await db.delete(reviews).where(eq(reviews.reviewerId, user.id));
       await db.delete(auditLogs).where(eq(auditLogs.actorId, user.id));
+      await db
+        .delete(auditLogs)
+        .where(
+          and(
+            eq(auditLogs.targetType, 'USER'),
+            eq(auditLogs.targetId, user.id),
+          ),
+        );
       await db.delete(users).where(eq(users.id, user.id));
     },
   };

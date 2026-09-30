@@ -27,7 +27,8 @@ import {
 /**
  * 따로 부여하는 역할. SUBMITTER는 로그인한 모든 사용자가 기본으로 가지므로
  * 저장하지 않는다(src/auth/types/role.ts 참고).
- * 부여는 당분간 DB에 직접 INSERT 한다.
+ * SUPER_ADMIN이 PUT/DELETE /signage/users/:id/roles/:role로 부여·회수한다.
+ * 첫 SUPER_ADMIN만 DB에 직접 INSERT 한다.
  */
 export const grantedRoleEnum = pgEnum('granted_role', [
   'REVIEWER',

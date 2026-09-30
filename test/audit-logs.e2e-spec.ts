@@ -275,7 +275,7 @@ describe('감사 로그 조회 (e2e)', () => {
   });
 
   it('형식이 틀린 필터는 422', async () => {
-    await list(reviewer, '?targetType=USER').expect(422);
+    await list(reviewer, '?targetType=ACCOUNT').expect(422);
     await list(reviewer, '?action=approved').expect(422);
   });
 
