@@ -52,8 +52,8 @@ describe('편성 (e2e)', () => {
     db = app.get<Database>(DB_CONNECTION);
 
     await db.insert(targetGroups).values([
-      { id: group1, name: 'E2E 편성 그룹 1' },
-      { id: group2, name: 'E2E 편성 그룹 2' },
+      { id: group1, name: `E2E 편성 그룹 ${group1}` },
+      { id: group2, name: `E2E 편성 그룹 ${group2}` },
     ]);
     admin = await createTestUser(app, { roles: ['SUPER_ADMIN'] });
     requester = await createTestUser(app);

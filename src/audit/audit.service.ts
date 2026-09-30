@@ -18,13 +18,19 @@ export const AUDIT_ACTIONS = [
   'DEVICE_REGISTERED',
   'DEVICE_UPDATED',
   'DEVICE_TOKEN_ROTATED',
+  'GROUP_CREATED',
+  'GROUP_UPDATED',
+  'GROUP_DELETED',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+export const AUDIT_TARGET_TYPES = ['SUBMISSION', 'DEVICE', 'GROUP'] as const;
+export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
 export type AuditEntry = {
   actor: { type: 'USER' | 'DEVICE' | 'SYSTEM'; id: string | null };
   action: AuditAction;
-  target: { type: 'SUBMISSION' | 'DEVICE'; id: string };
+  target: { type: AuditTargetType; id: string };
   reason?: string | null;
   metadata?: Record<string, unknown>;
   at: Date;
