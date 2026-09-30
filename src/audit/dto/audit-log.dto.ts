@@ -108,6 +108,15 @@ export class AuditLogDto {
   targetId: string;
 
   @ApiProperty({
+    description:
+      '대상의 표시 이름. SUBMISSION이면 신청의 현재 제목, DEVICE면 기기의 현재 이름(로그를 쓸 때가 아니라 조회 시점 값). 대상이 지워졌으면 null',
+    type: String,
+    nullable: true,
+    example: '2026 GIST 가을 축제',
+  })
+  targetTitle: string | null;
+
+  @ApiProperty({
     description: '반려 의견·중단 사유 등',
     type: String,
     nullable: true,

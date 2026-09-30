@@ -5,7 +5,7 @@ import { eq, inArray } from 'drizzle-orm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { DB_CONNECTION, type Database } from '../src/db/index.js';
-import { auditLogs, users } from '../src/db/schema.js';
+import { auditLogs, devices, submissions, users } from '../src/db/schema.js';
 import { StorageService } from '../src/storage/storage.service.js';
 import { MemoryStorage } from './helpers/memory-storage.js';
 import {
@@ -25,6 +25,8 @@ describe('감사 로그 조회 (e2e)', () => {
   let submissionId: string;
   let othersSubmissionId: string;
   let approveRequestId: string;
+  const deviceId = randomUUID();
+  const missingTargetId = randomUUID();
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
@@ -66,7 +68,15 @@ describe('감사 로그 조회 (e2e)', () => {
   afterAll(async () => {
     await db
       .delete(auditLogs)
-      .where(inArray(auditLogs.targetId, [submissionId, othersSubmissionId]));
+      .where(
+        inArray(auditLogs.targetId, [
+          submissionId,
+          othersSubmissionId,
+          deviceId,
+          missingTargetId,
+        ]),
+      );
+    await db.delete(devices).where(eq(devices.id, deviceId));
     await requester.remove();
     await other.remove();
     await reviewer.remove();
@@ -214,6 +224,49 @@ describe('감사 로그 조회 (e2e)', () => {
   it('형식이 틀린 필터는 422', async () => {
     await list(reviewer, '?targetType=USER').expect(422);
     await list(reviewer, '?action=approved').expect(422);
+  });
+
+  it('대상의 현재 제목·기기 이름을 targetTitle로 주고, 대상이 없으면 null', async () => {
+    const now = new Date();
+    await db.insert(devices).values({
+      id: deviceId,
+      name: '학생회관 1층 TV',
+      tokenHash: randomUUID().replaceAll('-', '').padEnd(64, '0'),
+      tokenIssuedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(auditLogs).values([
+      {
+        actorType: 'SYSTEM',
+        action: 'DEVICE_UPDATED',
+        targetType: 'DEVICE',
+        targetId: deviceId,
+        createdAt: now,
+      },
+      {
+        actorType: 'SYSTEM',
+        action: 'SUBMISSION_ENDED',
+        targetType: 'SUBMISSION',
+        targetId: missingTargetId,
+        createdAt: now,
+      },
+    ]);
+    // 로그를 쓴 뒤 제목이 바뀌어도 지금 제목을 준다
+    await db
+      .update(submissions)
+      .set({ title: '바뀐 제목' })
+      .where(eq(submissions.id, submissionId));
+
+    const titleOf = async (targetId: string) => {
+      const res = await list(reviewer, `?targetId=${targetId}`).expect(200);
+      return res.body.items.map(
+        (log: { targetTitle: string | null }) => log.targetTitle,
+      );
+    };
+    expect(await titleOf(submissionId)).toEqual(Array(3).fill('바뀐 제목'));
+    expect(await titleOf(deviceId)).toEqual(['학생회관 1층 TV']);
+    expect(await titleOf(missingTargetId)).toEqual([null]);
   });
 
   it('로그인이 필요하다', async () => {
