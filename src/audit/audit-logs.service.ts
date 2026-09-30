@@ -1,5 +1,5 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { AuthUser } from '../auth/types/auth-user.js';
 import { isReviewer } from '../auth/types/role.js';
@@ -34,7 +34,7 @@ export class AuditLogsService {
     const filter = and(
       query.targetType ? eq(auditLogs.targetType, query.targetType) : undefined,
       query.targetId ? eq(auditLogs.targetId, query.targetId) : undefined,
-      query.action ? eq(auditLogs.action, query.action) : undefined,
+      query.action ? inArray(auditLogs.action, query.action) : undefined,
     );
     let pageFilter = filter;
     if (query.cursor) {

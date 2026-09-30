@@ -1,10 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
+  IsArray,
   IsIn,
   IsOptional,
   IsString,
-  Matches,
   MaxLength,
 } from 'class-validator';
 import {
@@ -12,6 +12,7 @@ import {
   LimitField,
 } from '../../common/pagination/cursor-query.dto.js';
 import { auditActorTypeEnum } from '../../db/schema.js';
+import { AUDIT_ACTIONS, type AuditAction } from '../audit.service.js';
 
 export const AUDIT_TARGET_TYPES = ['SUBMISSION', 'DEVICE'] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
@@ -41,13 +42,22 @@ export class ListAuditLogsQueryDto {
   targetId?: string;
 
   @ApiPropertyOptional({
-    description: '행위 필터',
-    example: 'SUBMISSION_APPROVED',
+    description:
+      '행위 필터. 쉼표로 여러 개를 보내면 그중 하나에 해당하는 로그를 준다. 모르는 값이 섞이면 422',
+    example: 'SUBMISSION_APPROVED,SUBMISSION_REJECTED,SUBMISSION_SUSPENDED',
+    type: String,
   })
-  @Transform(emptyToUndefined)
+  @Transform(({ value }) => {
+    // action=A,B와 action=A&action=B를 같게 받는다
+    const raw: unknown = Array.isArray(value) ? value.join(',') : value;
+    return typeof raw === 'string' && raw !== ''
+      ? [...new Set(raw.split(',').map((action) => action.trim()))]
+      : undefined;
+  })
   @IsOptional()
-  @Matches(/^[A-Z_]{1,64}$/, { message: '행위 형식이 올바르지 않습니다.' })
-  action?: string;
+  @IsArray()
+  @IsIn(AUDIT_ACTIONS, { each: true, message: '알 수 없는 행위가 있습니다.' })
+  action?: AuditAction[];
 
   @CursorField()
   cursor?: string;

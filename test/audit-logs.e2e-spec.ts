@@ -140,6 +140,42 @@ describe('감사 로그 조회 (e2e)', () => {
     expect(res.body.items).toHaveLength(1);
   });
 
+  it('행위를 쉼표로 여러 개 보내면 그중 하나에 해당하는 로그를 준다', async () => {
+    const actions = (res: { body: { items: { action: string }[] } }) =>
+      res.body.items.map((log) => log.action);
+
+    const res = await list(
+      reviewer,
+      `?targetId=${submissionId}&action=SUBMISSION_APPROVED,SUBMISSION_REJECTED,SUBMISSION_CREATED`,
+    ).expect(200);
+    expect(actions(res)).toEqual(['SUBMISSION_APPROVED', 'SUBMISSION_CREATED']);
+    expect(res.body.totalCount).toBe(2);
+
+    // 공백·중복을 허용하고, 같은 이름을 여러 번 보내도 같게 받는다
+    const spaced = await list(
+      reviewer,
+      `?targetId=${submissionId}&action=SUBMISSION_APPROVED,%20SUBMISSION_APPROVED`,
+    ).expect(200);
+    expect(actions(spaced)).toEqual(['SUBMISSION_APPROVED']);
+    const repeated = await list(
+      reviewer,
+      `?targetId=${submissionId}&action=SUBMISSION_APPROVED&action=SUBMISSION_PUBLISHED`,
+    ).expect(200);
+    expect(actions(repeated)).toEqual([
+      'SUBMISSION_PUBLISHED',
+      'SUBMISSION_APPROVED',
+    ]);
+  });
+
+  it('모르는 행위가 섞이면 422', async () => {
+    const res = await list(
+      reviewer,
+      '?action=SUBMISSION_APPROVED,SUBMISSION_UNKNOWN',
+    ).expect(422);
+    expect(res.body.fields).toHaveProperty('action');
+    await list(reviewer, '?action=SUBMISSION_APPROVED,').expect(422);
+  });
+
   it('cursor로 이어 받으면 겹치지 않는다', async () => {
     const query = `?targetType=SUBMISSION&targetId=${submissionId}&limit=2`;
     const first = await list(reviewer, query).expect(200);

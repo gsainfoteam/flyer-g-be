@@ -3,21 +3,23 @@ import { currentRequestId } from '../common/request-id/request-id.js';
 import type { Transaction } from '../db/index.js';
 import { auditLogs } from '../db/schema.js';
 
-export type AuditAction =
-  | 'SUBMISSION_CREATED'
-  | 'SUBMISSION_UPDATED'
-  | 'SUBMISSION_RESUBMITTED'
-  | 'SUBMISSION_CANCELED'
-  | 'SUBMISSION_APPROVED'
-  | 'SUBMISSION_REJECTED'
-  | 'SUBMISSION_SUSPENDED'
+export const AUDIT_ACTIONS = [
+  'SUBMISSION_CREATED',
+  'SUBMISSION_UPDATED',
+  'SUBMISSION_RESUBMITTED',
+  'SUBMISSION_CANCELED',
+  'SUBMISSION_APPROVED',
+  'SUBMISSION_REJECTED',
+  'SUBMISSION_SUSPENDED',
   // 스케줄러가 기간에 맞춰 바꾼 상태 (actor SYSTEM)
-  | 'SUBMISSION_SCHEDULED'
-  | 'SUBMISSION_PUBLISHED'
-  | 'SUBMISSION_ENDED'
-  | 'DEVICE_REGISTERED'
-  | 'DEVICE_UPDATED'
-  | 'DEVICE_TOKEN_ROTATED';
+  'SUBMISSION_SCHEDULED',
+  'SUBMISSION_PUBLISHED',
+  'SUBMISSION_ENDED',
+  'DEVICE_REGISTERED',
+  'DEVICE_UPDATED',
+  'DEVICE_TOKEN_ROTATED',
+] as const;
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 export type AuditEntry = {
   actor: { type: 'USER' | 'DEVICE' | 'SYSTEM'; id: string | null };
