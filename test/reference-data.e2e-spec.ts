@@ -36,11 +36,24 @@ describe('참조 데이터와 운영 설정 (e2e)', () => {
     await db
       .insert(categories)
       .values({ id: hiddenCategoryId, name: '숨김', isActive: false });
-    // 정렬 확인을 위해 sortOrder를 id 순서와 반대로 둔다.
+    // 이름순인지 확인하려고 sortOrder를 이름 순서와 반대로 둔다(sortOrder는 쓰지 않는다).
     await db.insert(targetGroups).values([
-      { id: groupIds.first, name: 'E2E 그룹 1', sortOrder: -2 },
-      { id: groupIds.second, name: 'E2E 그룹 2', sortOrder: -3 },
-      { id: groupIds.hidden, name: 'E2E 숨김', sortOrder: -1, isActive: false },
+      {
+        id: groupIds.first,
+        name: `E2E 그룹 1 ${groupIds.first}`,
+        sortOrder: -1,
+      },
+      {
+        id: groupIds.second,
+        name: `E2E 그룹 2 ${groupIds.second}`,
+        sortOrder: -2,
+      },
+      {
+        id: groupIds.hidden,
+        name: `E2E 그룹 3 ${groupIds.hidden}`,
+        sortOrder: -3,
+        isActive: false,
+      },
     ]);
 
     member = await createTestUser(app);
@@ -84,15 +97,31 @@ describe('참조 데이터와 운영 설정 (e2e)', () => {
     expect(ids).not.toContain(hiddenCategoryId);
   });
 
-  it('대상 그룹: sortOrder 순서, 숨긴 그룹 제외, deviceCount 포함', async () => {
+  it('대상 그룹: 이름순, 숨긴 그룹도 isHidden으로 준다', async () => {
     const res = await get('/signage/target-groups', member).expect(200);
     const ours = res.body.filter((g: { id: string }) =>
       Object.values(groupIds).includes(g.id),
     );
 
     expect(ours).toEqual([
-      { id: groupIds.second, name: 'E2E 그룹 2', deviceCount: 0 },
-      { id: groupIds.first, name: 'E2E 그룹 1', deviceCount: 0 },
+      {
+        id: groupIds.first,
+        name: `E2E 그룹 1 ${groupIds.first}`,
+        deviceCount: 0,
+        isHidden: false,
+      },
+      {
+        id: groupIds.second,
+        name: `E2E 그룹 2 ${groupIds.second}`,
+        deviceCount: 0,
+        isHidden: false,
+      },
+      {
+        id: groupIds.hidden,
+        name: `E2E 그룹 3 ${groupIds.hidden}`,
+        deviceCount: 0,
+        isHidden: true,
+      },
     ]);
   });
 

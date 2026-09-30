@@ -32,6 +32,8 @@ describe('게시 신청 (e2e)', () => {
   let assetId: string;
   const groupId = uniqueSlug('grp');
   const hiddenGroupId = uniqueSlug('grp');
+  // 신청에 연결한 뒤 숨긴다
+  const laterHiddenGroupId = uniqueSlug('grp');
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
@@ -45,8 +47,9 @@ describe('게시 신청 (e2e)', () => {
     db = app.get<Database>(DB_CONNECTION);
 
     await db.insert(targetGroups).values([
-      { id: groupId, name: 'E2E 그룹' },
-      { id: hiddenGroupId, name: 'E2E 숨김', isActive: false },
+      { id: groupId, name: `E2E 그룹 ${groupId}` },
+      { id: hiddenGroupId, name: `E2E 숨김 ${hiddenGroupId}`, isActive: false },
+      { id: laterHiddenGroupId, name: `E2E 나중에 숨김 ${laterHiddenGroupId}` },
     ]);
     owner = await createTestUser(app);
     other = await createTestUser(app);
@@ -60,7 +63,9 @@ describe('게시 신청 (e2e)', () => {
     await reviewer.remove();
     await db
       .delete(targetGroups)
-      .where(inArray(targetGroups.id, [groupId, hiddenGroupId]));
+      .where(
+        inArray(targetGroups.id, [groupId, hiddenGroupId, laterHiddenGroupId]),
+      );
     await app.close();
   });
 
@@ -446,6 +451,36 @@ describe('게시 신청 (e2e)', () => {
 
       const res = await patch(id, { version: 1, title, startAt }).expect(200);
       expect(res.body.version).toBe(1);
+    });
+
+    it('이미 연결된 숨긴 그룹은 그대로 두고 고칠 수 있지만, 새로 추가할 수는 없다', async () => {
+      const created = await create(
+        validBody({ targetGroupIds: [groupId, laterHiddenGroupId] }),
+      ).expect(201);
+      const { id } = created.body;
+      await db
+        .update(targetGroups)
+        .set({ isActive: false })
+        .where(eq(targetGroups.id, laterHiddenGroupId));
+
+      await patch(id, {
+        version: 1,
+        title: '숨긴 그룹 유지',
+        targetGroupIds: [laterHiddenGroupId, groupId],
+      }).expect(200);
+      const narrowed = await patch(id, {
+        version: 2,
+        targetGroupIds: [laterHiddenGroupId],
+      }).expect(200);
+      expect(narrowed.body.targetGroupIds).toEqual([laterHiddenGroupId]);
+
+      const res = await patch(id, {
+        version: 3,
+        targetGroupIds: [laterHiddenGroupId, hiddenGroupId],
+      }).expect(422);
+      expect(res.body.fields).toEqual({
+        targetGroupIds: `선택할 수 없는 대상 위치가 있습니다: ${hiddenGroupId}`,
+      });
     });
 
     it('version이 최신이 아니면 409', async () => {

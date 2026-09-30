@@ -24,6 +24,7 @@ import { ErrorCode } from '../common/errors/error-code.js';
 import { validationFailed } from '../common/errors/validation.js';
 import { decodeCursor } from '../common/pagination/cursor.js';
 import { toPage, type Page } from '../common/pagination/page.js';
+import { violatesUnique } from '../db/errors.js';
 import { DB_CONNECTION, type Database, type Transaction } from '../db/index.js';
 import {
   categories,
@@ -337,7 +338,10 @@ export class SubmissionsService {
       await this.validateReferences(user.id, {
         categoryId: changes.categoryId,
         assetId: changes.assetId,
-        targetGroupIds: groupsChanged ? dto.targetGroupIds : undefined,
+        // 이미 연결된 숨긴 그룹은 그대로 둘 수 있다. 새로 추가하는 그룹만 확인한다.
+        targetGroupIds: groupsChanged
+          ? dto.targetGroupIds!.filter((id) => !currentGroups.includes(id))
+          : undefined,
       }),
     );
     if (Object.keys(errors).length > 0) {
@@ -690,7 +694,7 @@ export class SubmissionsService {
     try {
       return await run();
     } catch (error) {
-      if (violatesConstraint(error, ACTIVE_NOTICE_INDEX)) {
+      if (violatesUnique(error, ACTIVE_NOTICE_INDEX)) {
         throw new AppException(
           HttpStatus.CONFLICT,
           ErrorCode.ALREADY_SUBMITTED,
@@ -738,20 +742,4 @@ function sameValue(a: unknown, b: unknown): boolean {
 
 function sameSet(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value) => b.includes(value));
-}
-
-/** drizzle이 감싼 postgres 오류까지 따라가 unique 제약 위반을 찾는다. */
-function violatesConstraint(error: unknown, constraint: string): boolean {
-  let current: unknown = error;
-  while (current && typeof current === 'object') {
-    const { code, constraint_name } = current as {
-      code?: string;
-      constraint_name?: string;
-    };
-    if (code === '23505' && constraint_name === constraint) {
-      return true;
-    }
-    current = (current as { cause?: unknown }).cause;
-  }
-  return false;
 }

@@ -12,10 +12,12 @@ import {
   LimitField,
 } from '../../common/pagination/cursor-query.dto.js';
 import { auditActorTypeEnum } from '../../db/schema.js';
-import { AUDIT_ACTIONS, type AuditAction } from '../audit.service.js';
-
-export const AUDIT_TARGET_TYPES = ['SUBMISSION', 'DEVICE'] as const;
-export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
+import {
+  AUDIT_ACTIONS,
+  AUDIT_TARGET_TYPES,
+  type AuditAction,
+  type AuditTargetType,
+} from '../audit.service.js';
 
 const emptyToUndefined = ({ value }: { value: unknown }) =>
   value === '' ? undefined : value;
@@ -32,7 +34,7 @@ export class ListAuditLogsQueryDto {
   targetType?: AuditTargetType;
 
   @ApiPropertyOptional({
-    description: '대상 ID (신청 ID, 기기 ID)',
+    description: '대상 ID (신청 ID, 기기 ID, 그룹 ID)',
     example: '8d2f4a1e-3c5b-4e21-9a0c-1d8e5f6b2c34',
   })
   @Transform(emptyToUndefined)
@@ -97,10 +99,12 @@ export class AuditLogDto {
   @ApiProperty({
     description: `행위. 신청: SUBMISSION_CREATED, _UPDATED, _RESUBMITTED, _CANCELED, _APPROVED, _REJECTED, _SUSPENDED, _SCHEDULED, _PUBLISHED, _ENDED
 기기: DEVICE_REGISTERED, DEVICE_UPDATED, DEVICE_TOKEN_ROTATED
+위치 그룹: GROUP_CREATED, GROUP_UPDATED, GROUP_DELETED
 
 - _SCHEDULED·_PUBLISHED·_ENDED는 1분마다 도는 주기 작업이 기간에 맞춰 상태를 바꿀 때 actorType SYSTEM으로 남는다. 실제 시작·종료 시각보다 최대 1분 늦게 찍힐 수 있다
 - 시작 시각이 이미 지난 신청을 승인하면 바로 게시되어 _PUBLISHED 없이 _APPROVED 하나만 남는다. 이때 metadata.toStatus가 PUBLISHED다
-- 중단(_SUSPENDED)된 게시에는 _ENDED가 남지 않는다`,
+- 중단(_SUSPENDED)된 게시에는 _ENDED가 남지 않는다
+- GROUP_* metadata: _CREATED·_DELETED는 { name }, _UPDATED는 { changes: { name?: { from, to }, isHidden?: { from, to } } }`,
     example: 'SUBMISSION_APPROVED',
   })
   action: string;
@@ -113,7 +117,7 @@ export class AuditLogDto {
 
   @ApiProperty({
     description:
-      '대상의 표시 이름. SUBMISSION이면 신청의 현재 제목, DEVICE면 기기의 현재 이름(로그를 쓸 때가 아니라 조회 시점 값). 대상이 지워졌으면 null',
+      '대상의 표시 이름. SUBMISSION이면 신청의 현재 제목, DEVICE면 기기의 현재 이름, GROUP이면 그룹의 현재 이름(로그를 쓸 때가 아니라 조회 시점 값). 대상이 지워졌으면 null (지운 그룹의 이름은 GROUP_DELETED의 metadata.name)',
     type: String,
     nullable: true,
     example: '2026 GIST 가을 축제',

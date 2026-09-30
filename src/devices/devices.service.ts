@@ -97,7 +97,11 @@ export class DevicesService {
   ): Promise<DeviceDto> {
     await this.findRow(id);
     if (dto.groupIds !== undefined) {
-      await this.assertGroups(dto.groupIds);
+      // 이미 연결된 숨긴 그룹은 그대로 둘 수 있다. 새로 추가하는 그룹만 확인한다.
+      const current = (await this.groupIdsOf([id])).get(id) ?? [];
+      await this.assertGroups(
+        dto.groupIds.filter((groupId) => !current.includes(groupId)),
+      );
     }
 
     const now = new Date();

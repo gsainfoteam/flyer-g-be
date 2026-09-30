@@ -46,7 +46,8 @@ const deviceIdPipe = new ParseUUIDPipe({
 const ID_PARAM = { name: 'id', description: '기기 ID' };
 const NOT_FOUND_DOC = { description: '없는 기기', type: ErrorResponseDto };
 const VALIDATION_DOC = {
-  description: '입력 검증 실패. 없는·숨긴 위치 그룹은 fields.groupIds',
+  description:
+    '입력 검증 실패. 새로 추가한 그룹 중 없거나 숨긴 그룹이 있으면 fields.groupIds (이미 연결된 숨긴 그룹은 그대로 둘 수 있다)',
   type: ErrorResponseDto,
 };
 const SUPER_ADMIN_ONLY = {

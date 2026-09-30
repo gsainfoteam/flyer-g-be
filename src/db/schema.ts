@@ -98,13 +98,18 @@ export const categories = pgTable(
   ],
 );
 
-/** 게시 대상 위치 묶음(예: 학사기숙사 A동). 기기와 신청이 그룹을 가리킨다. */
+/**
+ * 게시 대상 위치 묶음(예: 학사기숙사 A동). 기기와 신청이 그룹을 가리킨다.
+ * 운영자가 관리 화면에서 만든다(src/target-groups). 그때 ID는 서버가 grp_xxx로 정한다.
+ */
 export const targetGroups = pgTable(
   'target_groups',
   {
     id: varchar('id', { length: 64 }).primaryKey(),
     name: varchar('name', { length: 100 }).notNull(),
+    // 목록을 이름순으로 주면서 쓰지 않는다.
     sortOrder: integer('sort_order').notNull().default(0),
+    // false면 숨긴 그룹. 새로 고를 수 없지만 이미 연결된 기기·신청과 편성은 그대로다.
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
@@ -118,6 +123,8 @@ export const targetGroups = pgTable(
       'target_groups_id_format',
       sql`${table.id} ~ ${sql.raw(`'${SLUG_PATTERN}'`)}`,
     ),
+    // 대소문자만 다른 이름도 같은 그룹으로 본다. 숨긴 그룹도 센다.
+    uniqueIndex('target_groups_name_lower_uq').on(sql`lower(${table.name})`),
   ],
 );
 

@@ -85,6 +85,13 @@
       "when": 1790493760812,
       "tag": "0011_notice_uniqueness_excludes_finished",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790755823285,
+      "tag": "0012_target_group_name_unique",
+      "breakpoints": true
     }
   ]
 }

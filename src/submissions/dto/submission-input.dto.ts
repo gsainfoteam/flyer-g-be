@@ -146,7 +146,7 @@ export class CreateSubmissionDto extends SubmissionDisplayFields {
 
   @ApiPropertyOptional({
     description:
-      'GET /signage/target-groups의 id 목록. 비우면 전체 기기가 대상',
+      'GET /signage/target-groups의 id 목록(숨긴 그룹 제외). 비우면 전체 기기가 대상',
     type: [String],
     example: [],
     default: [],
@@ -204,7 +204,12 @@ export class UpdateSubmissionDto extends SubmissionDisplayFields {
   @Matches(WITH_OFFSET, { message: DATE_MESSAGE })
   endAt?: string;
 
-  @ApiPropertyOptional({ type: [String], example: ['grp_house_a'] })
+  @ApiPropertyOptional({
+    description:
+      '대상 위치를 통째로 바꾼다. 새로 추가한 그룹 중 없거나 숨긴 그룹이 있으면 422 fields.targetGroupIds. 이미 연결된 숨긴 그룹은 그대로 둘 수 있다',
+    type: [String],
+    example: ['grp_house_a'],
+  })
   @ValidateIf((_, value) => value !== undefined)
   @IsArray({ message: '대상 위치가 올바르지 않습니다.' })
   @ArrayMaxSize(50, { message: '대상 위치는 50개까지 고를 수 있습니다.' })

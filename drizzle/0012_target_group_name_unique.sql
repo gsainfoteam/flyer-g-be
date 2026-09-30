@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "target_groups_name_lower_uq" ON "target_groups" USING btree (lower("name"));

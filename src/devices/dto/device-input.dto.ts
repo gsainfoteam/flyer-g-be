@@ -51,7 +51,8 @@ class DeviceSettingsFields {
   location?: string | null;
 
   @ApiPropertyOptional({
-    description: '기기가 속한 위치 그룹 (GET /signage/target-groups의 id)',
+    description:
+      '기기가 속한 위치 그룹 (GET /signage/target-groups의 id). 수정할 때는 통째로 바꾼다. 숨긴 그룹은 새로 추가할 수 없지만 이미 연결된 것은 그대로 둘 수 있다',
     type: [String],
     example: ['grp_house_a'],
   })

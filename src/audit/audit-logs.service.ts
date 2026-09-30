@@ -8,7 +8,14 @@ import { ErrorCode } from '../common/errors/error-code.js';
 import { decodeCursor } from '../common/pagination/cursor.js';
 import { toPage, type Page } from '../common/pagination/page.js';
 import { DB_CONNECTION, type Database } from '../db/index.js';
-import { auditLogs, devices, submissions, users } from '../db/schema.js';
+import {
+  auditLogs,
+  devices,
+  submissions,
+  targetGroups,
+  users,
+} from '../db/schema.js';
+import type { AuditTargetType } from './audit.service.js';
 import type {
   AuditLogDto,
   ListAuditLogsQueryDto,
@@ -94,24 +101,27 @@ export class AuditLogsService {
   }
 
   /**
-   * 대상의 현재 표시 이름 (신청 제목, 기기 이름). 로그를 쓸 때가 아니라 지금 값이다.
+   * 대상의 현재 표시 이름 (신청 제목, 기기 이름, 그룹 이름). 로그를 쓸 때가 아니라 지금 값이다.
    * target_id는 문자열이라 JOIN하면 uuid 인덱스를 못 쓰므로, 페이지를 받은 뒤 종류별로 한 번씩 찾는다.
    */
   private async targetTitlesOf(
     logs: AuditLogRow[],
   ): Promise<Map<string, string>> {
-    const idsOf = (type: AuditLogRow['targetType']) => [
+    const idsOf = (type: AuditTargetType) => [
       ...new Set(
         logs
           .filter((log) => log.targetType === type)
-          .map((log) => log.targetId)
-          .filter((id) => uuidSchema.safeParse(id).success),
+          .map((log) => log.targetId),
       ),
     ];
-    const submissionIds = idsOf('SUBMISSION');
-    const deviceIds = idsOf('DEVICE');
+    // 신청·기기 ID는 uuid 컬럼이라 형식이 틀린 값을 넘기면 쿼리가 실패한다.
+    const uuidsOf = (type: AuditTargetType) =>
+      idsOf(type).filter((id) => uuidSchema.safeParse(id).success);
+    const submissionIds = uuidsOf('SUBMISSION');
+    const deviceIds = uuidsOf('DEVICE');
+    const groupIds = idsOf('GROUP');
 
-    const [submissionRows, deviceRows] = await Promise.all([
+    const [submissionRows, deviceRows, groupRows] = await Promise.all([
       submissionIds.length
         ? this.db
             .select({ id: submissions.id, title: submissions.title })
@@ -124,20 +134,23 @@ export class AuditLogsService {
             .from(devices)
             .where(inArray(devices.id, deviceIds))
         : [],
+      groupIds.length
+        ? this.db
+            .select({ id: targetGroups.id, title: targetGroups.name })
+            .from(targetGroups)
+            .where(inArray(targetGroups.id, groupIds))
+        : [],
     ]);
 
     const titles = new Map<string, string>();
-    for (const row of submissionRows) {
-      titles.set(
-        titleKey({ targetType: 'SUBMISSION', targetId: row.id }),
-        row.title,
-      );
-    }
-    for (const row of deviceRows) {
-      titles.set(
-        titleKey({ targetType: 'DEVICE', targetId: row.id }),
-        row.title,
-      );
+    for (const [targetType, rows] of [
+      ['SUBMISSION', submissionRows],
+      ['DEVICE', deviceRows],
+      ['GROUP', groupRows],
+    ] as const) {
+      for (const row of rows) {
+        titles.set(titleKey({ targetType, targetId: row.id }), row.title);
+      }
     }
     return titles;
   }

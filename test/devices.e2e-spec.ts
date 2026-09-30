@@ -20,6 +20,8 @@ describe('기기 등록과 인증 (e2e)', () => {
   let submitter: TestUser;
   const groupId = uniqueSlug('grp');
   const hiddenGroupId = uniqueSlug('grp');
+  // 기기에 연결한 뒤 숨긴다
+  const laterHiddenGroupId = uniqueSlug('grp');
   const createdDeviceIds: string[] = [];
 
   beforeAll(async () => {
@@ -33,8 +35,9 @@ describe('기기 등록과 인증 (e2e)', () => {
     db = app.get<Database>(DB_CONNECTION);
 
     await db.insert(targetGroups).values([
-      { id: groupId, name: 'E2E 기기 그룹' },
-      { id: hiddenGroupId, name: 'E2E 숨김', isActive: false },
+      { id: groupId, name: `E2E 기기 그룹 ${groupId}` },
+      { id: hiddenGroupId, name: `E2E 숨김 ${hiddenGroupId}`, isActive: false },
+      { id: laterHiddenGroupId, name: `E2E 나중에 숨김 ${laterHiddenGroupId}` },
     ]);
     admin = await createTestUser(app, { roles: ['SUPER_ADMIN'] });
     reviewer = await createTestUser(app, { roles: ['REVIEWER'] });
@@ -50,7 +53,9 @@ describe('기기 등록과 인증 (e2e)', () => {
     }
     await db
       .delete(targetGroups)
-      .where(inArray(targetGroups.id, [groupId, hiddenGroupId]));
+      .where(
+        inArray(targetGroups.id, [groupId, hiddenGroupId, laterHiddenGroupId]),
+      );
     for (const user of [admin, reviewer, submitter]) {
       await user.remove();
     }
@@ -286,6 +291,33 @@ describe('기기 등록과 인증 (e2e)', () => {
         layout: { type: 'SINGLE', rotationSeconds: 20 },
       });
       expect(await countOf()).toBe(before);
+    });
+
+    it('이미 연결된 숨긴 그룹은 그대로 두고 고칠 수 있지만, 새로 추가할 수는 없다', async () => {
+      const { id } = await register({
+        groupIds: [groupId, laterHiddenGroupId],
+      });
+      await db
+        .update(targetGroups)
+        .set({ isActive: false })
+        .where(eq(targetGroups.id, laterHiddenGroupId));
+
+      await patch(id, { name: '숨긴 그룹 유지' }).expect(200);
+      const kept = await patch(id, {
+        groupIds: [laterHiddenGroupId, groupId],
+      }).expect(200);
+      expect(kept.body.groupIds).toEqual([groupId, laterHiddenGroupId].sort());
+      const narrowed = await patch(id, {
+        groupIds: [laterHiddenGroupId],
+      }).expect(200);
+      expect(narrowed.body.groupIds).toEqual([laterHiddenGroupId]);
+
+      const res = await patch(id, {
+        groupIds: [laterHiddenGroupId, hiddenGroupId],
+      }).expect(422);
+      expect(res.body.fields).toEqual({
+        groupIds: `선택할 수 없는 위치 그룹이 있습니다: ${hiddenGroupId}`,
+      });
     });
 
     it('등록·수정·재발급이 감사 로그에 남는다', async () => {
