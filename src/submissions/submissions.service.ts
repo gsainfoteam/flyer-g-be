@@ -27,10 +27,12 @@ import { toPage, type Page } from '../common/pagination/page.js';
 import { DB_CONNECTION, type Database, type Transaction } from '../db/index.js';
 import {
   categories,
+  reviews,
   submissionStatusEnum,
   submissionTargetGroups,
   submissions,
   users,
+  type ReviewDecision,
   type Submission,
   type SubmissionStatus,
 } from '../db/schema.js';
@@ -62,6 +64,7 @@ import {
 export type SubmissionRow = Submission & {
   categoryName: string;
   requesterName: string;
+  lastDecision: ReviewDecision | null;
 };
 
 const ACTIVE_NOTICE_INDEX = 'submissions_ziggle_notice_id_active_uq';
@@ -69,6 +72,14 @@ const cursorSchema = z.tuple([z.iso.datetime(), z.uuid()]);
 
 /** 검토 대기열 정렬 기준. 모든 신청은 만들 때 submittedAt이 채워지지만 안전하게 createdAt으로 보완한다. */
 const waitingSince = sql<Date>`coalesce(${submissions.submittedAt}, ${submissions.createdAt})`;
+
+/** 가장 최근 검토 결정. 검토 대기 목록에서 처음 낸 신청과 다시 낸 신청을 가르는 데 쓴다. */
+const lastDecision = sql<ReviewDecision | null>`(
+  select ${reviews.decision} from ${reviews}
+  where ${reviews.submissionId} = ${submissions.id}
+  order by ${reviews.reviewedAt} desc, ${reviews.id} desc
+  limit 1
+)`;
 
 @Injectable()
 export class SubmissionsService {
@@ -559,6 +570,7 @@ export class SubmissionsService {
         updatedAt: submissions.updatedAt,
         categoryName: categories.name,
         requesterName: users.name,
+        lastDecision,
       })
       .from(submissions)
       .innerJoin(categories, eq(categories.id, submissions.categoryId))
@@ -621,6 +633,7 @@ export class SubmissionsService {
       location: row.location,
       description: row.description,
       version: row.version,
+      lastDecision: row.lastDecision,
       submittedAt: row.submittedAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
