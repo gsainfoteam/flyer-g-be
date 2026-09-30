@@ -27,6 +27,7 @@ describe('감사 로그 조회 (e2e)', () => {
   let approveRequestId: string;
   const deviceId = randomUUID();
   const missingTargetId = randomUUID();
+  let secondSubmissionId: string | undefined;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
@@ -74,6 +75,7 @@ describe('감사 로그 조회 (e2e)', () => {
           othersSubmissionId,
           deviceId,
           missingTargetId,
+          ...(secondSubmissionId ? [secondSubmissionId] : []),
         ]),
       );
     await db.delete(devices).where(eq(devices.id, deviceId));
@@ -219,6 +221,57 @@ describe('감사 로그 조회 (e2e)', () => {
     await list(requester, '?targetType=SUBMISSION&targetId=not-a-uuid').expect(
       403,
     );
+  });
+
+  it('신청자가 targetId를 비우면 본인 신청 전체의 로그만 최신순으로 본다', async () => {
+    secondSubmissionId = await submit(requester);
+    const own = new Set([submissionId, secondSubmissionId]);
+
+    const res = await list(requester, '?targetType=SUBMISSION').expect(200);
+    expect(res.body.totalCount).toBe(4);
+    expect(
+      res.body.items.every(
+        (log: { targetType: string; targetId: string }) =>
+          log.targetType === 'SUBMISSION' && own.has(log.targetId),
+      ),
+    ).toBe(true);
+    const times = res.body.items.map(
+      (log: { createdAt: string }) => log.createdAt,
+    );
+    expect(times).toEqual([...times].sort().reverse());
+    expect(
+      res.body.items.find(
+        (log: { targetId: string }) => log.targetId === secondSubmissionId,
+      ),
+    ).toMatchObject({
+      action: 'SUBMISSION_CREATED',
+      targetTitle: '감사 로그 대상',
+    });
+
+    // 행위 필터와 함께 쓸 수 있다
+    const approved = await list(
+      requester,
+      '?targetType=SUBMISSION&action=SUBMISSION_APPROVED,SUBMISSION_PUBLISHED',
+    ).expect(200);
+    expect(
+      approved.body.items.map((log: { action: string }) => log.action),
+    ).toEqual(['SUBMISSION_PUBLISHED', 'SUBMISSION_APPROVED']);
+
+    // 다른 사용자는 자기 신청만 본다
+    const others = await list(other, '?targetType=SUBMISSION').expect(200);
+    expect(
+      others.body.items.map((log: { targetId: string }) => log.targetId),
+    ).toEqual([othersSubmissionId]);
+
+    // 검토자는 targetId를 비우면 전체를 본다
+    const all = await list(reviewer, '?targetType=SUBMISSION&limit=100').expect(
+      200,
+    );
+    expect(all.body.totalCount).toBeGreaterThanOrEqual(5);
+
+    // targetType 없이, 또는 DEVICE로는 여전히 볼 수 없다
+    await list(requester).expect(403);
+    await list(requester, '?targetType=DEVICE').expect(403);
   });
 
   it('형식이 틀린 필터는 422', async () => {

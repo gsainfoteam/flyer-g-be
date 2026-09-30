@@ -23,7 +23,7 @@ const emptyToUndefined = ({ value }: { value: unknown }) =>
 export class ListAuditLogsQueryDto {
   @ApiPropertyOptional({
     description:
-      '대상 종류. 검토자가 아니면 SUBMISSION과 본인 신청의 targetId를 함께 보내야 한다',
+      '대상 종류. 검토자가 아니면 SUBMISSION을 보내야 한다 (targetId를 비우면 본인 신청 전체)',
     enum: AUDIT_TARGET_TYPES,
   })
   @Transform(emptyToUndefined)

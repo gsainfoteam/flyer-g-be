@@ -1,5 +1,5 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import type { AuthUser } from '../auth/types/auth-user.js';
 import { isReviewer } from '../auth/types/role.js';
@@ -31,10 +31,11 @@ export class AuditLogsService {
     user: AuthUser,
     query: ListAuditLogsQueryDto,
   ): Promise<Page<AuditLogDto>> {
-    await this.assertCanView(user, query);
+    const visible = await this.visibleTo(user, query);
     const now = new Date();
 
     const filter = and(
+      visible,
       query.targetType ? eq(auditLogs.targetType, query.targetType) : undefined,
       query.targetId ? eq(auditLogs.targetId, query.targetId) : undefined,
       query.action ? inArray(auditLogs.action, query.action) : undefined,
@@ -141,13 +142,26 @@ export class AuditLogsService {
     return titles;
   }
 
-  /** 검토자가 아니면 본인 신청 하나의 로그만 볼 수 있다. */
-  private async assertCanView(
+  /**
+   * 검토자는 전체를 본다. 그 외 사용자는 본인 신청의 로그만 본다:
+   * targetId를 주면 그 신청이 본인 것인지 확인하고, 비우면 본인 신청 전체로 좁힌다.
+   * 돌려준 조건은 목록과 건수 모두에 붙는다.
+   */
+  private async visibleTo(
     user: AuthUser,
     query: ListAuditLogsQueryDto,
-  ): Promise<void> {
+  ): Promise<SQL | undefined> {
     if (isReviewer(user.roles)) {
-      return;
+      return undefined;
+    }
+    if (query.targetType === 'SUBMISSION' && !query.targetId) {
+      return inArray(
+        auditLogs.targetId,
+        this.db
+          .select({ id: sql<string>`${submissions.id}::text` })
+          .from(submissions)
+          .where(eq(submissions.requesterId, user.id)),
+      );
     }
     if (query.targetType === 'SUBMISSION' && query.targetId) {
       const [own] = await this.db
@@ -160,7 +174,7 @@ export class AuditLogsService {
           ),
         );
       if (own) {
-        return;
+        return undefined;
       }
     }
     throw new AppException(
