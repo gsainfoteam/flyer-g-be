@@ -83,6 +83,44 @@ const lastDecision = sql<ReviewDecision | null>`(
   limit 1
 )`;
 
+/**
+ * Keep this query builder factory outside the traced service class. Drizzle
+ * query builders are thenable, so @Trace would otherwise execute this query
+ * and replace the builder with its rows before callers can add orderBy/limit.
+ */
+function selectSubmissionRows(db: Database, where: SQL | undefined) {
+  return db
+    .select({
+      id: submissions.id,
+      requesterId: submissions.requesterId,
+      ziggleNoticeId: submissions.ziggleNoticeId,
+      title: submissions.title,
+      categoryId: submissions.categoryId,
+      assetId: submissions.assetId,
+      detailUrl: submissions.detailUrl,
+      startAt: submissions.startAt,
+      endAt: submissions.endAt,
+      status: submissions.status,
+      priority: submissions.priority,
+      organizerName: submissions.organizerName,
+      subtitle: submissions.subtitle,
+      location: submissions.location,
+      description: submissions.description,
+      version: submissions.version,
+      submittedAt: submissions.submittedAt,
+      createdAt: submissions.createdAt,
+      updatedAt: submissions.updatedAt,
+      categoryName: categories.name,
+      requesterName: users.name,
+      lastDecision,
+    })
+    .from(submissions)
+    .innerJoin(categories, eq(categories.id, submissions.categoryId))
+    .innerJoin(users, eq(users.id, submissions.requesterId))
+    .where(where)
+    .$dynamic();
+}
+
 @Trace()
 @Injectable()
 export class SubmissionsService {
@@ -186,7 +224,7 @@ export class SubmissionsService {
     }
 
     const [rows, [{ total }]] = await Promise.all([
-      this.selectRows(pageFilter)
+      selectSubmissionRows(this.db, pageFilter)
         .orderBy(desc(submissions.createdAt), desc(submissions.id))
         .limit(query.limit + 1),
       this.db.select({ total: count() }).from(submissions).where(filter),
@@ -484,7 +522,7 @@ export class SubmissionsService {
     }
 
     const [rows, [{ total }]] = await Promise.all([
-      this.selectRows(pageFilter)
+      selectSubmissionRows(this.db, pageFilter)
         .orderBy(asc(waitingSince), asc(submissions.id))
         .limit(query.limit + 1),
       this.db.select({ total: count() }).from(submissions).where(filter),
@@ -548,41 +586,11 @@ export class SubmissionsService {
   }
 
   async findRow(id: string): Promise<SubmissionRow | undefined> {
-    const [row] = await this.selectRows(eq(submissions.id, id));
+    const [row] = await selectSubmissionRows(
+      this.db,
+      eq(submissions.id, id),
+    );
     return row;
-  }
-
-  private selectRows(where: SQL | undefined) {
-    return this.db
-      .select({
-        id: submissions.id,
-        requesterId: submissions.requesterId,
-        ziggleNoticeId: submissions.ziggleNoticeId,
-        title: submissions.title,
-        categoryId: submissions.categoryId,
-        assetId: submissions.assetId,
-        detailUrl: submissions.detailUrl,
-        startAt: submissions.startAt,
-        endAt: submissions.endAt,
-        status: submissions.status,
-        priority: submissions.priority,
-        organizerName: submissions.organizerName,
-        subtitle: submissions.subtitle,
-        location: submissions.location,
-        description: submissions.description,
-        version: submissions.version,
-        submittedAt: submissions.submittedAt,
-        createdAt: submissions.createdAt,
-        updatedAt: submissions.updatedAt,
-        categoryName: categories.name,
-        requesterName: users.name,
-        lastDecision,
-      })
-      .from(submissions)
-      .innerJoin(categories, eq(categories.id, submissions.categoryId))
-      .innerJoin(users, eq(users.id, submissions.requesterId))
-      .where(where)
-      .$dynamic();
   }
 
   private async targetGroupIdsOf(
