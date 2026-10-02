@@ -11,6 +11,9 @@ jobs:
   verify:
     name: Lint & Build & Test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - name: Checkout
@@ -23,6 +26,8 @@ jobs:
       # (버전이 멋대로 올라가지 않아서 CI에 적합)
       - name: Install dependencies
         run: bun install --frozen-lockfile
+        env:
+          NPM_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Lint
         run: bun run lint
