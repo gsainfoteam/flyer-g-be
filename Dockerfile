@@ -7,12 +7,12 @@ WORKDIR /app
 # 최종 이미지에는 prod 의존성만 들어가게 한다.
 FROM base AS install
 RUN mkdir -p /temp/dev
-COPY package.json bun.lock /temp/dev/
-RUN cd /temp/dev && bun install --frozen-lockfile
+COPY package.json bun.lock .npmrc /temp/dev/
+RUN --mount=type=secret,id=NPM_TOKEN,env=NPM_TOKEN cd /temp/dev && bun install --frozen-lockfile
 
 RUN mkdir -p /temp/prod
-COPY package.json bun.lock /temp/prod/
-RUN cd /temp/prod && bun install --frozen-lockfile --production
+COPY package.json bun.lock .npmrc /temp/prod/
+RUN --mount=type=secret,id=NPM_TOKEN,env=NPM_TOKEN cd /temp/prod && bun install --frozen-lockfile --production
 
 # ---------- 빌드 (TypeScript -> JavaScript) ----------
 FROM base AS build
