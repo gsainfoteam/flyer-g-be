@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { asc, eq, inArray } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
@@ -24,6 +25,7 @@ import type {
 // heartbeat는 60초마다 온다. 세 번 연속 빠지면 꺼진 것으로 본다.
 const ONLINE_WITHIN_MS = 3 * 60 * 1000;
 
+@Trace()
 @Injectable()
 export class DevicesService {
   constructor(

@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { Inject, Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { DB_CONNECTION, type Database } from '../db/index.js';
@@ -9,6 +10,7 @@ import type {
 } from './dto/play-events.dto.js';
 
 /** 기기 런타임 보고 (요구사항 9절). 기기는 실패해도 재생을 멈추지 않으므로 가볍게 받는다. */
+@Trace()
 @Injectable()
 export class DeviceTelemetryService {
   constructor(@Inject(DB_CONNECTION) private readonly db: Database) {}

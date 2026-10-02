@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -12,6 +13,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env.js';
 import { StorageService } from './storage.service.js';
 
+@Trace()
 @Injectable()
 export class S3StorageService
   extends StorageService

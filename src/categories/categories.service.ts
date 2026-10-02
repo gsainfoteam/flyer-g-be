@@ -1,8 +1,10 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq } from 'drizzle-orm';
 import { DB_CONNECTION, type Database } from '../db/index.js';
 import { categories } from '../db/schema.js';
 
+@Trace()
 @Injectable()
 export class CategoriesService {
   constructor(@Inject(DB_CONNECTION) private readonly db: Database) {}

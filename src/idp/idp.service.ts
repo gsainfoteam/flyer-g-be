@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import {
   BadGatewayException,
   Injectable,
@@ -24,6 +25,7 @@ const REQUEST_TIMEOUT_MS = 10_000;
  * - 사용자가 가져온 code/token이 잘못됨 → 401
  * - IdP 장애·네트워크 오류·예상 밖 응답 → 502
  */
+@Trace()
 @Injectable()
 export class IdpService {
   private readonly logger = new Logger(IdpService.name);

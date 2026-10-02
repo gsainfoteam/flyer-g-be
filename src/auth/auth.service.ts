@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -15,6 +16,7 @@ import type { AccessTokenPayload, AuthUser } from './types/auth-user.js';
  * 3. 서버가 code를 IdP 토큰으로 바꾸고, userinfo로 사용자를 확인해 DB에 반영한다.
  * 4. 서버가 자체 access token(JWT)을 발급하고, IdP refresh token은 그대로 전달한다.
  */
+@Trace()
 @Injectable()
 export class AuthService {
   private readonly expiresIn: number;

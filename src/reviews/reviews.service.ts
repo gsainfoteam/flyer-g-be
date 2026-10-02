@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { asc, eq } from 'drizzle-orm';
 import { AssetsService } from '../assets/assets.service.js';
@@ -31,6 +32,7 @@ const SUSPENDABLE_STATUSES: readonly SubmissionStatus[] = [
  * 검토와 승인 (요구사항 6절). 상태 변경·검토 이력·감사 로그를 한 트랜잭션에 쓴다.
  * 동시에 두 검토자가 처리하면 version 조건 때문에 한쪽만 성공하고 다른 쪽은 409다.
  */
+@Trace()
 @Injectable()
 export class ReviewsService {
   constructor(

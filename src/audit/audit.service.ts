@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { Injectable } from '@nestjs/common';
 import { currentRequestId } from '../common/request-id/request-id.js';
 import type { Transaction } from '../db/index.js';
@@ -47,6 +48,7 @@ export type AuditEntry = {
  * 감사 로그 기록. 바뀐 내용과 같은 트랜잭션에서 쓴다.
  * 변경은 됐는데 기록이 없거나, 기록은 있는데 변경이 롤백되는 일이 없게 하기 위해서다.
  */
+@Trace()
 @Injectable()
 export class AuditService {
   async record(tx: Transaction, entry: AuditEntry): Promise<void> {

@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, gt, inArray, lte, sql } from 'drizzle-orm';
@@ -21,6 +22,7 @@ import type { PlaylistDto, PlaylistItemDto } from './dto/playlist.dto.js';
  * - 이 기기가 대상: 신청에 대상 그룹이 없으면 전체, 있으면 기기 그룹과 하나라도 겹쳐야 한다
  * - 포스터 검증이 끝난 것(READY)
  */
+@Trace()
 @Injectable()
 export class PlaylistService {
   constructor(

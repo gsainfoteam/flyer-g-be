@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { randomBytes } from 'node:crypto';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
@@ -22,6 +23,7 @@ const GROUP_REFERENCES = [
   'submission_target_groups_target_group_id_target_groups_id_fk',
 ];
 
+@Trace()
 @Injectable()
 export class TargetGroupsService {
   constructor(

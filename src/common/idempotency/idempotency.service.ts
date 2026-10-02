@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, lt, sql } from 'drizzle-orm';
 import {
@@ -27,6 +28,7 @@ const RETENTION = sql.raw(`interval '24 hours'`);
  * 하나만 처리하게 한다. 처리 중에 DB 커넥션을 잡고 있지 않도록 row lock 대신
  * 상태 컬럼과 만료 시각을 쓴다.
  */
+@Trace()
 @Injectable()
 export class IdempotencyService {
   constructor(@Inject(DB_CONNECTION) private readonly db: Database) {}

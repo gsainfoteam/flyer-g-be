@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { AppException } from '../common/errors/app.exception.js';
@@ -42,6 +43,7 @@ export const variantKeysOf = (assetId: string) =>
  * 2. 브라우저가 서명 URL로 PUT한다 (진행률·취소는 브라우저가 처리)
  * 3. complete: 원본을 검증하고 EXIF를 뺀 변형 이미지를 만든 뒤 원본을 지운다
  */
+@Trace()
 @Injectable()
 export class AssetsService {
   private readonly logger = new Logger(AssetsService.name);

@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { Inject, Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { DB_CONNECTION, type Database } from '../db/index.js';
@@ -6,6 +7,7 @@ import type { IdpUserInfo } from '../idp/idp.types.js';
 
 export type UserWithRoles = User & { grantedRoles: GrantedRole[] };
 
+@Trace()
 @Injectable()
 export class UsersService {
   constructor(@Inject(DB_CONNECTION) private readonly db: Database) {}

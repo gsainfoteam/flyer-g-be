@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -13,6 +14,7 @@ import { SubmissionStatusJob } from './submission-status.job.js';
  * 주기 작업의 시간표. 작업 내용은 각 Job 클래스에 있고, 여기서는 켜져 있는지 확인하고 부르기만 한다.
  * 실패해도 서버는 계속 돈다. 다음 주기에 다시 시도한다.
  */
+@Trace()
 @Injectable()
 export class SchedulerService {
   private readonly logger = new Logger(SchedulerService.name);

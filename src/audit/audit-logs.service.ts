@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
@@ -31,6 +32,7 @@ type AuditLogRow = typeof auditLogs.$inferSelect;
  * 사용자 역할 변경(USER) 로그는 SUPER_ADMIN만 본다.
  * 쓰기는 AuditService가 한다.
  */
+@Trace()
 @Injectable()
 export class AuditLogsService {
   constructor(@Inject(DB_CONNECTION) private readonly db: Database) {}

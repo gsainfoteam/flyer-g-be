@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { and, between, desc, eq, sql } from 'drizzle-orm';
 import type { AuthUser } from '../auth/types/auth-user.js';
@@ -21,6 +22,7 @@ const MAX_RANGE_DAYS = 366;
  * 노출 통계 (요구사항 7.2, FR-DASH-03). 일별 집계 테이블을 읽는다.
  * "조회수"가 아니라 디스플레이가 정상 렌더링한 횟수다.
  */
+@Trace()
 @Injectable()
 export class StatsService {
   constructor(@Inject(DB_CONNECTION) private readonly db: Database) {}

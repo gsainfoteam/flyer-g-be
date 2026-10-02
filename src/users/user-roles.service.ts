@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
   and,
@@ -30,6 +31,7 @@ export const ROLE_LOCK = { namespace: 1179207271, key: 1 } as const;
  * SUPER_ADMIN의 사용자 역할 관리. 사용자는 첫 로그인 때 생기므로 로그인한 적 있는 사용자에게만 부여할 수 있다.
  * 역할은 요청마다 DB에서 읽으므로(JwtAuthGuard) 부여·회수는 대상의 다음 요청부터 바로 반영된다.
  */
+@Trace()
 @Injectable()
 export class UserRolesService {
   constructor(

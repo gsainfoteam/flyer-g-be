@@ -1,3 +1,4 @@
+import { Trace } from '@gsainfoteam/nest-observability';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
   and,
@@ -82,6 +83,7 @@ const lastDecision = sql<ReviewDecision | null>`(
   limit 1
 )`;
 
+@Trace()
 @Injectable()
 export class SubmissionsService {
   constructor(
