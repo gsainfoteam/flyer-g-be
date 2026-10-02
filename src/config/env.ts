@@ -52,6 +52,9 @@ const envSchema = z
     NODE_ENV: z.enum(['local', 'dev', 'prod']).default('local'),
     PORT: z.coerce.number().int().positive().default(3000),
 
+    // Base URL also determines whether production OpenTelemetry is initialized.
+    API_URL: z.preprocess(unsetIfEmpty, z.url().optional()),
+
     DB_HOST: z.string().min(1),
     DB_PORT: z.coerce.number().int().positive().default(5432),
     DB_USER: z.string().min(1),

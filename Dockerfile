@@ -32,4 +32,4 @@ COPY --from=build /app/package.json .
 COPY --from=build /app/drizzle drizzle
 
 EXPOSE 3000
-CMD ["bun", "run", "dist/main.js"]
+CMD ["bun", "run", "start:prod"]
