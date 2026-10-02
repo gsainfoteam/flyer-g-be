@@ -1,3 +1,4 @@
+import { instrumentDrizzleClient } from '@kubiks/otel-drizzle';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
@@ -25,7 +26,9 @@ export function createDatabaseConnection(params: DatabaseConnectionParams) {
     ssl: params.sslEnabled ? { rejectUnauthorized: false } : false,
   });
 
-  return drizzle(client, { schema });
+  const db = drizzle(client, { schema });
+  instrumentDrizzleClient(db);
+  return db;
 }
 
 export type Database = ReturnType<typeof createDatabaseConnection>;
