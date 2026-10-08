@@ -49,10 +49,7 @@ export function sha256Checksum(bytes: Buffer): string {
  * 업로드된 원본을 검증하고 공개용 이미지를 만든다.
  * 형식은 파일 시그니처(매직바이트)로 판별하므로 확장자만 바꾼 SVG·실행 파일은 여기서 걸린다.
  */
-export async function processImage(
-  bytes: Buffer,
-  options: { minShortEdgePx: number },
-): Promise<ProcessedImage> {
+export async function processImage(bytes: Buffer): Promise<ProcessedImage> {
   const input = () => sharp(bytes, { limitInputPixels: MAX_INPUT_PIXELS });
 
   let metadata: Metadata;
@@ -75,12 +72,6 @@ export async function processImage(
   }
 
   const { width, height } = metadata.autoOrient;
-  const shortEdge = Math.min(width, height);
-  if (shortEdge < options.minShortEdgePx) {
-    throw new ImageRejectedError(
-      `짧은 변이 ${options.minShortEdgePx}px 이상이어야 합니다. (현재 ${shortEdge}px)`,
-    );
-  }
 
   const variants = {} as Record<VariantName, Buffer>;
   try {

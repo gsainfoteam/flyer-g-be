@@ -16,8 +16,6 @@ export type AllowedMimeType = (typeof ALLOWED_MIME_TYPES)[number];
 export const SIGNAGE_POLICY = {
   /** 포스터 최대 용량(바이트) */
   maxUploadBytes: 10 * 1024 * 1024,
-  /** 포스터 짧은 변 최소 픽셀. TV(1920x1080)에서 뭉개지지 않는 기준 */
-  minShortEdgePx: 1080,
   /** 제목 최대 글자 수(앞뒤 공백 제외) */
   titleMaxLength: 80,
   /** 최대 게시 기간(개월, Asia/Seoul 달력 기준) */

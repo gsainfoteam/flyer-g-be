@@ -82,7 +82,7 @@ export class AssetsController {
     description: `저장소에 올린 원본을 검증하고 공개용 이미지를 만든다.
 
 - 파일 내용(시그니처)으로 형식을 판별한다. 확장자·Content-Type은 믿지 않는다
-- JPEG·PNG·WebP만, 짧은 변 1080px 이상(EXIF 회전 적용 후), 움직이는 이미지 불가
+- JPEG·PNG·WebP만, 움직이는 이미지 불가. 해상도 하한은 없다(화질은 검토자가 판단한다)
 - EXIF(위치 정보 포함)를 제거한 webp 변형 이미지(thumb, preview, tv)를 만들고 원본은 지운다
 - 여러 번 불러도 결과가 같다. 이미 처리된 asset은 같은 응답(또는 같은 거절 사유)을 준다
 - 거절된 asset은 다시 쓸 수 없다. presign부터 새로 한다`,
@@ -100,7 +100,7 @@ export class AssetsController {
   })
   @ApiUnprocessableEntityResponse({
     description:
-      '이미지 거절 (VALIDATION_FAILED). fields.file에 사용자에게 보여 줄 사유 (예: "짧은 변이 1080px 이상이어야 합니다. (현재 800px)")',
+      '이미지 거절 (VALIDATION_FAILED). fields.file에 사용자에게 보여 줄 사유 (예: "움직이는 이미지는 올릴 수 없습니다.")',
     type: ErrorResponseDto,
   })
   complete(
