@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -10,8 +9,8 @@ import {
   Min,
 } from 'class-validator';
 import {
-  ALLOWED_MIME_TYPES,
-  type AllowedMimeType,
+  ASSET_MIME_TYPES,
+  type AssetMimeType,
 } from '../../policy/signage-policy.js';
 
 export class PresignAssetRequestDto {
@@ -26,14 +25,13 @@ export class PresignAssetRequestDto {
 
   @ApiProperty({
     description:
-      '브라우저가 판별한 파일 형식. 업로드할 때 이 값을 Content-Type으로 보내야 한다',
-    enum: ALLOWED_MIME_TYPES,
+      '브라우저가 판별한 파일 형식. 업로드할 때 이 값을 Content-Type으로 보내야 한다. 영상(video/*)은 GET /signage/config의 allowedMimeTypes에 있을 때만 받는다',
+    enum: ASSET_MIME_TYPES,
     example: 'image/jpeg',
   })
-  @IsIn(ALLOWED_MIME_TYPES, {
-    message: 'JPEG, PNG, WebP 파일만 올릴 수 있습니다.',
-  })
-  mimeType: AllowedMimeType;
+  // 받는 형식은 영상 스위치에 따라 달라 서비스에서 검사한다 (안내 문구도 달라진다)
+  @IsString({ message: '파일 형식이 올바르지 않습니다.' })
+  mimeType: AssetMimeType;
 
   @ApiProperty({
     description: '파일 크기(바이트). 업로드할 파일의 크기와 정확히 같아야 한다',

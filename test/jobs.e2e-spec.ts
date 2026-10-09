@@ -7,7 +7,7 @@ import {
   uploadKey,
   variantKey,
   variantKeysOf,
-} from '../src/assets/assets.service.js';
+} from '../src/assets/asset-files.js';
 import { IdempotencyService } from '../src/common/idempotency/idempotency.service.js';
 import { DB_CONNECTION, type Database } from '../src/db/index.js';
 import {

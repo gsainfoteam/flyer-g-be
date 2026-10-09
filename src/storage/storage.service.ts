@@ -6,7 +6,7 @@ import { Trace } from '@gsainfoteam/nest-observability';
  *
  * 키 규칙
  * - uploads/<assetId>: 브라우저가 올린 원본. 비공개이고 처리 후 지운다(EXIF 위치 정보 포함 가능)
- * - assets/<assetId>/<variant>.webp: 처리한 공개 이미지. 버킷 정책으로 이 경로만 공개 읽기를 연다
+ * - assets/<assetId>/<variant>.webp, assets/<assetId>/video.mp4: 처리한 공개 파일. 버킷 정책으로 이 경로만 공개 읽기를 연다
  */
 @Trace()
 export abstract class StorageService {
@@ -28,6 +28,16 @@ export abstract class StorageService {
   abstract put(
     key: string,
     body: Buffer,
+    options: { contentType: string; cacheControl?: string },
+  ): Promise<void>;
+
+  /** 큰 객체(영상)를 메모리에 올리지 않고 파일로 받는다. */
+  abstract downloadToFile(key: string, filePath: string): Promise<void>;
+
+  /** 큰 파일(영상)을 메모리에 올리지 않고 올린다. */
+  abstract putFile(
+    key: string,
+    filePath: string,
     options: { contentType: string; cacheControl?: string },
   ): Promise<void>;
 

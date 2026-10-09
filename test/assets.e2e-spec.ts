@@ -1,10 +1,20 @@
+import { execFile } from 'node:child_process';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { eq, inArray } from 'drizzle-orm';
 import sharp from 'sharp';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
+import { variantKeysOf } from '../src/assets/asset-files.js';
 import { sha256Checksum } from '../src/assets/image-processor.js';
+import {
+  MAX_PROCESSING_ATTEMPTS,
+  VideoProcessingService,
+} from '../src/assets/video-processing.service.js';
 import { DB_CONNECTION, type Database } from '../src/db/index.js';
 import { assets, storageDeletions } from '../src/db/schema.js';
 import { StorageService } from '../src/storage/storage.service.js';
@@ -117,8 +127,10 @@ describe('포스터 업로드 (e2e)', () => {
         sizeBytes: 1000,
       }).expect(422);
 
+      // e2e는 영상 업로드를 켜고 돈다. 꺼진 경우의 안내는 signage-policy.spec.ts가 본다
       expect(res.body.fields).toEqual({
-        mimeType: 'JPEG, PNG, WebP 파일만 올릴 수 있습니다.',
+        mimeType:
+          'JPEG, PNG, WebP 이미지나 MP4, MOV, WebM 영상만 올릴 수 있습니다.',
       });
     });
 
@@ -140,6 +152,8 @@ describe('포스터 업로드 (e2e)', () => {
       const base = `https://cdn.test/assets/${assetId}`;
       expect(res.body).toEqual({
         assetId,
+        status: 'READY',
+        kind: 'IMAGE',
         url: `${base}/preview.webp`,
         mimeType: 'image/jpeg',
         width: 1536,
@@ -152,6 +166,9 @@ describe('포스터 업로드 (e2e)', () => {
           preview: `${base}/preview.webp`,
           tv: `${base}/tv.webp`,
         },
+        videoUrl: null,
+        durationMs: null,
+        hasAudio: null,
       });
 
       expect(storage.objects.has(`uploads/${assetId}`)).toBe(false);
@@ -296,8 +313,185 @@ describe('포스터 업로드 (e2e)', () => {
         storage.beforePut = undefined;
         await db
           .delete(storageDeletions)
-          .where(inArray(storageDeletions.key, variantKeys));
+          .where(inArray(storageDeletions.key, variantKeysOf(assetId)));
       }
+    });
+  });
+
+  describe('영상', () => {
+    const exec = promisify(execFile);
+    let videos: VideoProcessingService;
+    let dir: string;
+
+    beforeAll(async () => {
+      videos = app.get(VideoProcessingService);
+      dir = await mkdtemp(join(tmpdir(), 'assets-e2e-'));
+    });
+    afterAll(async () => {
+      await rm(dir, { recursive: true, force: true });
+    });
+
+    let seq = 0;
+    /** ffmpeg로 만든 테스트 영상 (320x180, 소리 있음) */
+    async function clip(seconds = 1): Promise<Buffer> {
+      const path = join(dir, `clip-${++seq}.mp4`);
+      // prettier-ignore
+      await exec('ffmpeg', [
+        '-v', 'error', '-y',
+        '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=10',
+        '-f', 'lavfi', '-i', 'sine=frequency=440',
+        '-t', String(seconds),
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+        path,
+      ]);
+      return readFile(path);
+    }
+
+    async function uploadedVideo(bytes: Buffer): Promise<string> {
+      const res = await presign({
+        fileName: 'clip.mp4',
+        mimeType: 'video/mp4',
+        sizeBytes: bytes.length,
+      }).expect(201);
+      storage.upload(`uploads/${res.body.assetId}`, bytes, 'video/mp4');
+      return res.body.assetId as string;
+    }
+
+    const rowOf = async (assetId: string) =>
+      (await db.select().from(assets).where(eq(assets.id, assetId)))[0];
+
+    /** 변환 대기열이 빌 때까지 처리한다. 일시적 실패는 한 번에 한 번만 다시 시도하므로 여러 번 부른다 */
+    async function settle(assetId: string) {
+      for (let i = 0; i <= MAX_PROCESSING_ATTEMPTS + 1; i++) {
+        await videos.drain();
+        if ((await rowOf(assetId)).status !== 'PROCESSING') {
+          return;
+        }
+      }
+    }
+
+    it('100MB를 넘으면 413', async () => {
+      const res = await presign({
+        fileName: 'clip.mp4',
+        mimeType: 'video/mp4',
+        sizeBytes: 100 * 1024 * 1024 + 1,
+      }).expect(413);
+      expect(res.body.fields).toEqual({
+        sizeBytes: '파일은 100MB 이하여야 합니다.',
+      });
+    });
+
+    it('202 PROCESSING과 Retry-After를 주고, 변환이 끝나면 200과 결과를 준다', async () => {
+      const bytes = await clip();
+      const assetId = await uploadedVideo(bytes);
+
+      const first = await complete(assetId).expect(202);
+      expect(first.headers['retry-after']).toBe('5');
+      expect(first.body).toEqual({
+        assetId,
+        status: 'PROCESSING',
+        kind: 'VIDEO',
+        retryAfterSeconds: 5,
+      });
+
+      await settle(assetId);
+      const res = await complete(assetId).expect(200);
+      const base = `https://cdn.test/assets/${assetId}`;
+      expect(res.body).toEqual({
+        assetId,
+        status: 'READY',
+        kind: 'VIDEO',
+        url: `${base}/preview.webp`,
+        mimeType: 'video/mp4',
+        width: 320,
+        height: 180,
+        sizeBytes: bytes.length,
+        checksum: sha256Checksum(bytes),
+        moderationStatus: 'APPROVED',
+        variants: {
+          thumb: `${base}/thumb.webp`,
+          preview: `${base}/preview.webp`,
+          tv: `${base}/tv.webp`,
+        },
+        videoUrl: `${base}/video.mp4`,
+        durationMs: expect.any(Number),
+        hasAudio: true,
+      });
+      expect(res.body.durationMs).toBeGreaterThan(900);
+
+      expect(storage.objects.has(`uploads/${assetId}`)).toBe(false);
+      expect(
+        storage.objects.get(`assets/${assetId}/video.mp4`)?.contentType,
+      ).toBe('video/mp4');
+      const poster = storage.objects.get(`assets/${assetId}/tv.webp`)!;
+      expect((await sharp(poster.body).metadata()).format).toBe('webp');
+    });
+
+    it('정책을 넘으면 422와 사유, 다시 불러도 같은 사유를 준다', async () => {
+      const assetId = await uploadedVideo(await clip(31));
+      await complete(assetId).expect(202);
+      await settle(assetId);
+
+      const res = await complete(assetId).expect(422);
+      expect(res.body.fields.file).toMatch(
+        /^영상은 30초 이하여야 합니다\. \(현재 3\d\.\d초\)$/,
+      );
+      const again = await complete(assetId).expect(422);
+      expect(again.body.fields).toEqual(res.body.fields);
+      expect(storage.objects.has(`uploads/${assetId}`)).toBe(false);
+    });
+
+    it('영상이라고 신고해도 내용이 이미지면 거절한다', async () => {
+      const assetId = await uploadedVideo(await poster(1200, 1600));
+      await complete(assetId).expect(202);
+      await settle(assetId);
+
+      const res = await complete(assetId).expect(422);
+      expect(res.body.fields.file).toContain('지원하지 않는 형식');
+    });
+
+    it('저장소 장애는 다시 시도하고, 계속 실패하면 거절한다', async () => {
+      const assetId = await uploadedVideo(await clip());
+      storage.failDownloads.add(`uploads/${assetId}`);
+      try {
+        await complete(assetId).expect(202);
+        await videos.drain();
+        // 한 번 실패해도 대기열에 남는다. 다음 주기가 다시 가져가도록 잡은 것을 놓았다
+        const afterFailure = await rowOf(assetId);
+        expect(afterFailure.status).toBe('PROCESSING');
+        expect(afterFailure.processingStartedAt).toBeNull();
+        await complete(assetId).expect(202);
+
+        await settle(assetId);
+        const row = await rowOf(assetId);
+        expect(row.status).toBe('REJECTED');
+        expect(row.processingAttempts).toBe(MAX_PROCESSING_ATTEMPTS + 1);
+        const res = await complete(assetId).expect(422);
+        expect(res.body.fields.file).toBe(
+          '영상을 처리하지 못했습니다. 잠시 후 다시 올려주세요.',
+        );
+      } finally {
+        storage.failDownloads.delete(`uploads/${assetId}`);
+      }
+    });
+
+    it('다른 파드가 처리 중인 것은 두고, 멈춘 것은 다시 가져간다', async () => {
+      const assetId = await uploadedVideo(await clip());
+      // complete를 거치지 않고 "다른 파드가 막 가져간" 상태를 만든다 (같은 파드가 바로 처리하지 않게)
+      await db
+        .update(assets)
+        .set({ status: 'PROCESSING', processingStartedAt: new Date() })
+        .where(eq(assets.id, assetId));
+      await videos.drain();
+      expect((await rowOf(assetId)).status).toBe('PROCESSING');
+
+      // 그 파드가 죽어 오래 잡혀 있었다
+      await db
+        .update(assets)
+        .set({ processingStartedAt: new Date(Date.now() - 60 * 60 * 1000) })
+        .where(eq(assets.id, assetId));
+      await videos.drain();
+      expect((await rowOf(assetId)).status).toBe('READY');
     });
   });
 });

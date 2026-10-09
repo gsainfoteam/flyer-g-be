@@ -92,6 +92,13 @@ const envSchema = z
       .default('true')
       .transform((v) => v === 'true'),
 
+    // 영상 업로드를 받을지. TV 플레이어가 영상을 재생할 수 있게 된 환경부터 켠다.
+    // 꺼져 있어도 이미 올라온 영상의 처리와 편성은 그대로 한다. 영상 변환에는 ffmpeg·ffprobe가 PATH에 있어야 한다.
+    VIDEO_UPLOADS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+
     // 둘 다 설정하면 Swagger 문서(/docs)를 Basic Auth로 잠근다. 둘 다 비우면 공개.
     SWAGGER_USER: optionalString,
     SWAGGER_PASSWORD: optionalString,

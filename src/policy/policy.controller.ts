@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -7,14 +8,23 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { ErrorResponseDto } from '../common/dto/error-response.dto.js';
+import type { Env } from '../config/env.js';
 import { BEARER_AUTH } from '../config/swagger.js';
 import { SignageConfigDto } from './dto/signage-config.dto.js';
-import { SIGNAGE_POLICY } from './signage-policy.js';
+import { allowedMimeTypes, SIGNAGE_POLICY } from './signage-policy.js';
 
 @ApiTags('Reference')
 @ApiBearerAuth(BEARER_AUTH)
 @Controller('signage/config')
 export class PolicyController {
+  private readonly videoUploadsEnabled: boolean;
+
+  constructor(config: ConfigService<Env, true>) {
+    this.videoUploadsEnabled = config.get('VIDEO_UPLOADS_ENABLED', {
+      infer: true,
+    });
+  }
+
   @Get()
   @ApiOperation({
     summary: '운영 제한값',
@@ -29,7 +39,7 @@ export class PolicyController {
   getConfig(): SignageConfigDto {
     return {
       ...SIGNAGE_POLICY,
-      allowedMimeTypes: [...SIGNAGE_POLICY.allowedMimeTypes],
+      allowedMimeTypes: allowedMimeTypes(this.videoUploadsEnabled),
       allowedDetailUrlHosts: [...SIGNAGE_POLICY.allowedDetailUrlHosts],
     };
   }
