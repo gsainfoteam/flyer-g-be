@@ -60,6 +60,35 @@ export class SubmissionDto {
   posterThumbUrl: string;
 
   @ApiProperty({
+    description:
+      '포스터 종류. 지금은 IMAGE만 있다. VIDEO는 영상 업로드를 열면 생긴다',
+    enum: ['IMAGE', 'VIDEO'],
+    example: 'IMAGE',
+  })
+  posterKind: 'IMAGE' | 'VIDEO';
+
+  @ApiProperty({
+    description:
+      '포스터 원본 가로(px, EXIF 회전 적용 후). 미리보기는 1280px 안으로 줄였으므로 해상도 판단은 이 값으로 한다',
+    example: 1536,
+  })
+  posterWidth: number;
+
+  @ApiProperty({
+    description: '포스터 원본 세로(px, EXIF 회전 적용 후)',
+    example: 2048,
+  })
+  posterHeight: number;
+
+  @ApiProperty({
+    description: '영상 포스터의 길이(ms). 이미지는 null',
+    type: Number,
+    nullable: true,
+    example: null,
+  })
+  posterDurationMs: number | null;
+
+  @ApiProperty({
     type: String,
     nullable: true,
     example: 'https://ziggle.gistory.me/notice/1041',

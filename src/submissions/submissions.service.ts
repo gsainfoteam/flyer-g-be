@@ -28,6 +28,7 @@ import { toPage, type Page } from '../common/pagination/page.js';
 import { violatesUnique } from '../db/errors.js';
 import { DB_CONNECTION, type Database, type Transaction } from '../db/index.js';
 import {
+  assets,
   categories,
   reviews,
   submissionStatusEnum,
@@ -66,6 +67,8 @@ import {
 export type SubmissionRow = Submission & {
   categoryName: string;
   requesterName: string;
+  posterWidth: number | null;
+  posterHeight: number | null;
   lastDecision: ReviewDecision | null;
 };
 
@@ -112,11 +115,14 @@ function selectSubmissionRows(db: Database, where: SQL | undefined) {
       updatedAt: submissions.updatedAt,
       categoryName: categories.name,
       requesterName: users.name,
+      posterWidth: assets.width,
+      posterHeight: assets.height,
       lastDecision,
     })
     .from(submissions)
     .innerJoin(categories, eq(categories.id, submissions.categoryId))
     .innerJoin(users, eq(users.id, submissions.requesterId))
+    .innerJoin(assets, eq(assets.id, submissions.assetId))
     .where(where)
     .$dynamic();
 }
@@ -636,6 +642,11 @@ export class SubmissionsService {
       assetId: row.assetId,
       posterUrl: poster.preview,
       posterThumbUrl: poster.thumb,
+      posterKind: 'IMAGE',
+      // 신청은 READY asset만 가리킬 수 있어 크기가 항상 있다
+      posterWidth: row.posterWidth!,
+      posterHeight: row.posterHeight!,
+      posterDurationMs: null,
       detailUrl: row.detailUrl,
       startAt: row.startAt.toISOString(),
       endAt: row.endAt.toISOString(),

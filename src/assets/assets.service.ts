@@ -140,7 +140,7 @@ export class AssetsService {
 
     let processed;
     try {
-      processed = await processImage(bytes, SIGNAGE_POLICY);
+      processed = await processImage(bytes);
     } catch (error) {
       if (error instanceof ImageRejectedError) {
         return this.reject(asset, error.message);
