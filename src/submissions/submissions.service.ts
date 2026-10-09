@@ -35,6 +35,7 @@ import {
   submissionTargetGroups,
   submissions,
   users,
+  type Asset,
   type ReviewDecision,
   type Submission,
   type SubmissionStatus,
@@ -67,8 +68,10 @@ import {
 export type SubmissionRow = Submission & {
   categoryName: string;
   requesterName: string;
+  posterKind: Asset['kind'];
   posterWidth: number | null;
   posterHeight: number | null;
+  posterDurationMs: number | null;
   lastDecision: ReviewDecision | null;
 };
 
@@ -115,8 +118,10 @@ function selectSubmissionRows(db: Database, where: SQL | undefined) {
       updatedAt: submissions.updatedAt,
       categoryName: categories.name,
       requesterName: users.name,
+      posterKind: assets.kind,
       posterWidth: assets.width,
       posterHeight: assets.height,
+      posterDurationMs: assets.durationMs,
       lastDecision,
     })
     .from(submissions)
@@ -642,11 +647,15 @@ export class SubmissionsService {
       assetId: row.assetId,
       posterUrl: poster.preview,
       posterThumbUrl: poster.thumb,
-      posterKind: 'IMAGE',
+      posterKind: row.posterKind,
       // 신청은 READY asset만 가리킬 수 있어 크기가 항상 있다
       posterWidth: row.posterWidth!,
       posterHeight: row.posterHeight!,
-      posterDurationMs: null,
+      posterDurationMs: row.posterDurationMs,
+      posterVideoUrl: this.assetsService.videoUrl({
+        id: row.assetId,
+        kind: row.posterKind,
+      }),
       detailUrl: row.detailUrl,
       startAt: row.startAt.toISOString(),
       endAt: row.endAt.toISOString(),
@@ -690,7 +699,9 @@ export class SubmissionsService {
       errors.assetId =
         asset?.status === 'PENDING_UPLOAD'
           ? '포스터 업로드가 끝나지 않았습니다.'
-          : '포스터를 다시 올려주세요.';
+          : asset?.status === 'PROCESSING'
+            ? '영상 변환이 끝나지 않았습니다. 잠시 후 다시 시도해주세요.'
+            : '포스터를 다시 올려주세요.';
     }
     if (unavailableGroups.length > 0) {
       errors.targetGroupIds = `선택할 수 없는 대상 위치가 있습니다: ${unavailableGroups.join(', ')}`;

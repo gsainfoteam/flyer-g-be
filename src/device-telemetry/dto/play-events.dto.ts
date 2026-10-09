@@ -69,7 +69,8 @@ export class PlayEventDto {
   durationMs: number;
 
   @ApiProperty({
-    description: '전환 간격을 다 채웠는지. 중간에 편성이 바뀌어 끊겼으면 false',
+    description:
+      '전환 간격을 다 채웠는지(영상은 끝까지 재생했는지). 중간에 편성이 바뀌어 끊겼으면 false',
     example: true,
   })
   @IsBoolean()

@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 import {
-  ImageRejectedError,
+  MediaRejectedError,
   processImage,
   sha256Checksum,
 } from './image-processor.js';
@@ -35,7 +35,7 @@ async function rejectionOf(promise: Promise<unknown>): Promise<string> {
   try {
     await promise;
   } catch (error) {
-    expect(error).toBeInstanceOf(ImageRejectedError);
+    expect(error).toBeInstanceOf(MediaRejectedError);
     return (error as Error).message;
   }
   throw new Error('rejected가 아니다');

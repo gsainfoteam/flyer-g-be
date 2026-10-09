@@ -1,6 +1,24 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { DeviceLayoutDto } from '../../devices/dto/device.dto.js';
 
+/** 영상 포스터 재생 정보 */
+export class PlaylistVideoDto {
+  @ApiProperty({
+    description:
+      'TV 재생용 mp4 (H.264·AAC, 1920x1080 안, 30fps 이하, faststart). fetch()로 읽을 수 있어야 한다(버킷 CORS에 GET 필요). 내용이 바뀌지 않으므로 checksum으로 캐시한다',
+    example:
+      'https://gsainfoteam-icarus-flyer-g-production.s3.ap-northeast-2.amazonaws.com/assets/0f8e2c1a-.../video.mp4',
+  })
+  url: string;
+
+  @ApiProperty({
+    description:
+      '소리 트랙이 있는지. 브라우저 자동재생은 음소거여야 하므로 소리를 낼지는 플레이어가 정한다',
+    example: true,
+  })
+  hasAudio: boolean;
+}
+
 /** 편성 항목 하나 (요구사항 8절) */
 export class PlaylistItemDto {
   @ApiProperty({ example: '8d2f4a1e-3c5b-4e21-9a0c-1d8e5f6b2c34' })
@@ -19,8 +37,7 @@ export class PlaylistItemDto {
   category: string;
 
   @ApiProperty({
-    description:
-      '포스터 종류. 지금은 IMAGE만 있다. VIDEO는 영상 업로드를 열면 생긴다',
+    description: '포스터 종류. VIDEO면 video를 재생한다',
     enum: ['IMAGE', 'VIDEO'],
     example: 'IMAGE',
   })
@@ -28,13 +45,13 @@ export class PlaylistItemDto {
 
   @ApiProperty({
     description:
-      '원본 가로(px, EXIF 회전 적용 후). assetUrl 이미지와 비율이 같으므로 이미지를 받기 전에 배치를 정하는 데 쓴다',
+      '원본 가로(px, EXIF·영상 회전 정보 적용 후). assetUrl 이미지와 비율이 같으므로 이미지를 받기 전에 배치를 정하는 데 쓴다',
     example: 1536,
   })
   width: number;
 
   @ApiProperty({
-    description: '원본 세로(px, EXIF 회전 적용 후)',
+    description: '원본 세로(px, EXIF·영상 회전 정보 적용 후)',
     example: 2048,
   })
   height: number;
@@ -49,11 +66,23 @@ export class PlaylistItemDto {
 
   @ApiProperty({
     description:
-      'TV용 포스터(1920x1080 안, webp). fetch()로 읽을 수 있어야 한다(버킷 CORS에 GET 필요)',
+      'TV용 포스터(1920x1080 안, webp). fetch()로 읽을 수 있어야 한다(버킷 CORS에 GET 필요). 영상이어도 항상 정지 이미지(대표 프레임)다. 영상을 모르는 플레이어는 이것만 띄우면 된다',
     example:
       'https://gsainfoteam-icarus-flyer-g-production.s3.ap-northeast-2.amazonaws.com/assets/0f8e2c1a-.../tv.webp',
   })
   assetUrl: string;
+
+  @ApiProperty({
+    description: `영상 포스터만. 이미지는 null.
+
+재생 규칙
+- SINGLE: 끝까지 한 번 재생하고 다음으로 넘긴다. rotationSeconds보다 짧으면 그 시간이 찰 때까지 반복한다
+- FOUR_GRID: 칸 안에서 음소거로 반복 재생한다. 전환은 rotationSeconds를 따른다
+- 영상을 받는 중이거나 재생에 실패하면 assetUrl(대표 프레임)을 띄운다`,
+    type: PlaylistVideoDto,
+    nullable: true,
+  })
+  video: PlaylistVideoDto | null;
 
   @ApiProperty({
     description: '상세 링크(QR). 없으면 null',

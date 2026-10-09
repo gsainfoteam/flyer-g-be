@@ -80,6 +80,19 @@ describe('validateEnv — 스케줄러', () => {
   });
 });
 
+describe('validateEnv — 영상 업로드', () => {
+  it('기본은 꺼져 있다', () => {
+    expect(validateEnv(base).VIDEO_UPLOADS_ENABLED).toBe(false);
+  });
+
+  it("'true'면 켠다", () => {
+    expect(
+      validateEnv({ ...base, VIDEO_UPLOADS_ENABLED: 'true' })
+        .VIDEO_UPLOADS_ENABLED,
+    ).toBe(true);
+  });
+});
+
 describe('validateEnv — CORS', () => {
   it('비우면 허용 origin이 없다', () => {
     expect(validateEnv(base).CORS_ALLOWED_ORIGINS).toEqual([]);
