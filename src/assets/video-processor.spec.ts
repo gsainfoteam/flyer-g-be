@@ -195,6 +195,35 @@ describe('processVideo', () => {
     expect(message).toBe('영상은 30초 이하여야 합니다. (현재 31.0초)');
   });
 
+  it('헤더의 길이가 거짓이면 검증한 길이에서 끊고, 실제 길이를 잰다', async () => {
+    // 실제로는 40초짜리 WebM의 헤더(Segment Info > Duration)에 2초라고 적는다
+    const bytes = await readFile(
+      await video('webm', {
+        size: '64x36',
+        rate: 5,
+        seconds: 40,
+        audio: false,
+      }),
+    );
+    const at = bytes.indexOf(Buffer.from([0x44, 0x89, 0x88]));
+    expect(bytes.readDoubleBE(at + 3)).toBe(40000);
+    bytes.writeDoubleBE(2000, at + 3);
+    const lying = join(dir, 'lying.webm');
+    await writeFile(lying, bytes);
+
+    const result = await processVideo(lying, await workDir(), MAX);
+    expect(result.durationMs).toBeGreaterThanOrEqual(1800);
+    expect(result.durationMs).toBeLessThanOrEqual(2200);
+    // prettier-ignore
+    const { stdout } = await exec('ffprobe', [
+      '-v', 'error', '-count_frames', '-select_streams', 'v',
+      '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0',
+      result.videoPath,
+    ]);
+    // 5fps x 2초. 40초(200프레임)를 다 변환하지 않았다
+    expect(Number(stdout.trim())).toBeLessThanOrEqual(11);
+  });
+
   it('영상이 아니면 거절한다 (JPEG를 mp4라고 올린 경우)', async () => {
     const path = join(dir, 'image.mp4');
     await writeFile(

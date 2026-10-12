@@ -62,6 +62,9 @@ type Container = { mimeType: VideoMimeType; demuxer: 'mov' | 'matroska' };
  *   서버의 다른 파일을 읽어 들이는 형식은 고를 수 없다
  * - 프로토콜은 file만 허용한다. mov의 외부 참조(dref)는 ffmpeg 기본값으로 꺼져 있다
  * - 시간 제한을 넘기면 프로세스를 죽인다
+ *
+ * 컨테이너가 알려 주는 길이(mvhd, matroska Duration)는 업로더가 마음대로 쓸 수 있다.
+ * 그래서 검증한 길이에서 변환을 끊고(-t), 저장하는 길이는 우리가 만든 mp4에서 다시 잰다.
  */
 export async function processVideo(
   inputPath: string,
@@ -76,11 +79,12 @@ export async function processVideo(
 
   const videoPath = join(workDir, 'video.mp4');
   await transcode(inputPath, container, probed, videoPath);
+  const durationMs = await measureDuration(videoPath);
 
   const posterPath = join(workDir, 'poster.png');
   await extractPosterFrame(
     videoPath,
-    Math.min(POSTER_FRAME_SECONDS, probed.durationMs / 2000),
+    Math.min(POSTER_FRAME_SECONDS, durationMs / 2000),
     posterPath,
   );
   const poster = await readFile(posterPath);
@@ -93,7 +97,7 @@ export async function processVideo(
     mimeType: container.mimeType,
     width: probed.width,
     height: probed.height,
-    durationMs: probed.durationMs,
+    durationMs,
     hasAudio: probed.hasAudio,
     videoPath,
     variants,
@@ -263,6 +267,8 @@ async function transcode(
       '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
       '-maxrate', '6M', '-bufsize', '12M', '-profile:v', 'high',
       '-c:a', 'aac', '-b:a', '128k', '-ac', '2',
+      // 헤더의 길이가 거짓이어도 검증한 길이 넘게는 디코딩하지 않는다. 변환 시간이 정책 길이에 비례한다
+      '-t', (probed.durationMs / 1000).toFixed(3),
       '-movflags', '+faststart', '-f', 'mp4', '-y', outputPath,
     ], TRANSCODE_TIMEOUT_MS);
   } catch (error) {
@@ -273,6 +279,23 @@ async function transcode(
     }
     throw error;
   }
+}
+
+/** 변환한 mp4의 실제 길이(ms). 우리가 만든 파일이라 헤더를 믿을 수 있다 */
+async function measureDuration(videoPath: string): Promise<number> {
+  // prettier-ignore
+  const output = await run('ffprobe', [
+    '-v', 'error', '-protocol_whitelist', 'file', '-f', 'mp4',
+    '-show_entries', 'format=duration', '-of', 'json', videoPath,
+  ], PROBE_TIMEOUT_MS);
+  const seconds = Number((JSON.parse(output) as ProbeResult).format?.duration);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    // 헤더만 있고 프레임이 없는 파일
+    throw new MediaRejectedError(
+      '영상이 손상되어 변환할 수 없습니다. 파일을 확인하고 다시 올려주세요.',
+    );
+  }
+  return Math.round(seconds * 1000);
 }
 
 async function extractPosterFrame(
