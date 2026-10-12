@@ -5,9 +5,6 @@ export class SignageConfigDto {
   @ApiProperty({ description: '포스터 최대 용량(바이트)', example: 10485760 })
   maxUploadBytes: number;
 
-  @ApiProperty({ description: '포스터 짧은 변 최소 픽셀', example: 1080 })
-  minShortEdgePx: number;
-
   @ApiProperty({
     description: '제목 최대 글자 수 (앞뒤 공백 제외)',
     example: 80,

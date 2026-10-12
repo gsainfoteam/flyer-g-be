@@ -130,7 +130,6 @@ describe('참조 데이터와 운영 설정 (e2e)', () => {
 
     expect(res.body).toEqual({
       maxUploadBytes: 10485760,
-      minShortEdgePx: 1080,
       titleMaxLength: 80,
       maxPublishMonths: 3,
       minLeadTimeHours: 24,

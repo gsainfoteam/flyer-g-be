@@ -20,6 +20,35 @@ export class PlaylistItemDto {
 
   @ApiProperty({
     description:
+      '포스터 종류. 지금은 IMAGE만 있다. VIDEO는 영상 업로드를 열면 생긴다',
+    enum: ['IMAGE', 'VIDEO'],
+    example: 'IMAGE',
+  })
+  kind: 'IMAGE' | 'VIDEO';
+
+  @ApiProperty({
+    description:
+      '원본 가로(px, EXIF 회전 적용 후). assetUrl 이미지와 비율이 같으므로 이미지를 받기 전에 배치를 정하는 데 쓴다',
+    example: 1536,
+  })
+  width: number;
+
+  @ApiProperty({
+    description: '원본 세로(px, EXIF 회전 적용 후)',
+    example: 2048,
+  })
+  height: number;
+
+  @ApiProperty({
+    description: '영상 길이(ms). 이미지는 null',
+    type: Number,
+    nullable: true,
+    example: null,
+  })
+  durationMs: number | null;
+
+  @ApiProperty({
+    description:
       'TV용 포스터(1920x1080 안, webp). fetch()로 읽을 수 있어야 한다(버킷 CORS에 GET 필요)',
     example:
       'https://gsainfoteam-icarus-flyer-g-production.s3.ap-northeast-2.amazonaws.com/assets/0f8e2c1a-.../tv.webp',

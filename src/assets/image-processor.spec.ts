@@ -5,8 +5,6 @@ import {
   sha256Checksum,
 } from './image-processor.js';
 
-const MIN = { minShortEdgePx: 1080 };
-
 function image(
   width: number,
   height: number,
@@ -48,7 +46,7 @@ describe('processImage', () => {
     '%s는 형식·크기·checksum을 판별한다',
     async (format) => {
       const bytes = await image(1536, 2048, format);
-      const result = await processImage(bytes, MIN);
+      const result = await processImage(bytes);
 
       expect(result.mimeType).toBe(`image/${format}`);
       expect(result).toMatchObject({ width: 1536, height: 2048 });
@@ -58,7 +56,7 @@ describe('processImage', () => {
   );
 
   it('변형 이미지는 webp이고 상자 안에 맞춘다', async () => {
-    const { variants } = await processImage(await image(1536, 2048), MIN);
+    const { variants } = await processImage(await image(1536, 2048));
 
     const sizes = await Promise.all(
       Object.entries(variants).map(async ([name, buffer]) => {
@@ -74,7 +72,7 @@ describe('processImage', () => {
   });
 
   it('원본보다 키우지 않는다', async () => {
-    const { variants } = await processImage(await image(1080, 1080), MIN);
+    const { variants } = await processImage(await image(1080, 1080));
     const tv = await sharp(variants.tv).metadata();
     expect([tv.width, tv.height]).toEqual([1080, 1080]);
   });
@@ -83,7 +81,7 @@ describe('processImage', () => {
     const bytes = await jpegWithGps(1200, 1600);
     expect((await sharp(bytes).metadata()).exif).toBeDefined();
 
-    const { variants } = await processImage(bytes, MIN);
+    const { variants } = await processImage(bytes);
     for (const buffer of Object.values(variants)) {
       const meta = await sharp(buffer).metadata();
       expect(meta.exif).toBeUndefined();
@@ -94,23 +92,21 @@ describe('processImage', () => {
   it('EXIF 회전을 적용한 크기로 판정하고 돌려서 저장한다', async () => {
     // 저장은 가로 1600x1200, EXIF는 "90도 돌려서 보라"(6) → 실제 모양은 세로 1200x1600
     const bytes = await jpegWithGps(1600, 1200, 6);
-    const result = await processImage(bytes, MIN);
+    const result = await processImage(bytes);
 
     expect([result.width, result.height]).toEqual([1200, 1600]);
     const tv = await sharp(result.variants.tv).metadata();
     expect([tv.width, tv.height]).toEqual([810, 1080]);
   });
 
-  it('짧은 변이 기준보다 작으면 현재 크기와 함께 거절한다', async () => {
-    const message = await rejectionOf(
-      processImage(await image(800, 2000), MIN),
-    );
-    expect(message).toBe('짧은 변이 1080px 이상이어야 합니다. (현재 800px)');
+  it('해상도가 낮아도 받는다', async () => {
+    const result = await processImage(await image(400, 300));
+    expect([result.width, result.height]).toEqual([400, 300]);
   });
 
   it('허용하지 않는 형식(GIF)은 거절한다', async () => {
     const message = await rejectionOf(
-      processImage(await image(1200, 1600, 'gif'), MIN),
+      processImage(await image(1200, 1600, 'gif')),
     );
     expect(message).toContain('지원하지 않는 형식');
   });
@@ -119,20 +115,18 @@ describe('processImage', () => {
     const svg = Buffer.from(
       '<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="2000"><script>alert(1)</script></svg>',
     );
-    const message = await rejectionOf(processImage(svg, MIN));
+    const message = await rejectionOf(processImage(svg));
     expect(message).toContain('지원하지 않는 형식');
   });
 
   it('이미지가 아닌 파일은 거절한다', async () => {
     const exe = Buffer.from('MZ\x90\x00 this is not an image');
-    await rejectionOf(processImage(exe, MIN));
+    await rejectionOf(processImage(exe));
   });
 
   it('본문이 잘린 파일은 거절한다', async () => {
     const bytes = await image(1200, 1600);
-    const message = await rejectionOf(
-      processImage(bytes.subarray(0, 2000), MIN),
-    );
+    const message = await rejectionOf(processImage(bytes.subarray(0, 2000)));
     expect(message).toContain('손상');
   });
 });

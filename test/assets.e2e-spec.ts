@@ -180,13 +180,31 @@ describe('포스터 업로드 (e2e)', () => {
       expect(res.body.fields.file).toContain('손상');
     });
 
-    it('해상도가 낮으면 422와 사유, 다시 불러도 같은 사유를 준다', async () => {
-      const assetId = await uploaded(await poster(800, 1200));
+    it('해상도가 낮아도 받는다', async () => {
+      const assetId = await uploaded(await poster(400, 300));
+      const res = await complete(assetId).expect(200);
+      expect(res.body).toMatchObject({ width: 400, height: 300 });
+    });
+
+    it('거절하면 422와 사유, 다시 불러도 같은 사유를 준다', async () => {
+      const gif = await sharp({
+        create: {
+          width: 1200,
+          height: 1600,
+          channels: 3,
+          background: '#cc3366',
+        },
+      })
+        .gif()
+        .toBuffer();
+      const assetId = await uploaded(gif);
 
       const res = await complete(assetId).expect(422);
       expect(res.body).toMatchObject({
         code: 'VALIDATION_FAILED',
-        fields: { file: '짧은 변이 1080px 이상이어야 합니다. (현재 800px)' },
+        fields: {
+          file: '지원하지 않는 형식입니다. JPEG, PNG, WebP 파일만 올릴 수 있습니다.',
+        },
       });
 
       const again = await complete(assetId).expect(422);
