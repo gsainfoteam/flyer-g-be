@@ -338,10 +338,13 @@ export const deviceOrientationEnum = pgEnum('device_orientation', [
   'PORTRAIT',
 ]);
 
-export const displayLayoutEnum = pgEnum('display_layout', [
-  'SINGLE',
-  'FOUR_GRID',
-]);
+/**
+ * TV 화면 전환 방식. 기기마다 운영자가 고른다.
+ * WALL(모아 보기): 게시물을 비율 그대로 모은 벽과 한 건씩 크게 보기를 번갈아 보여 준다.
+ * STRIP(흐르는 띠): 같은 높이로 이어 붙인 띠를 한 칸씩 민다.
+ * DB의 값 순서는 예전 SINGLE·FOUR_GRID 이름만 바꾼 것이라 STRIP이 먼저다.
+ */
+export const displayLayoutEnum = pgEnum('display_layout', ['STRIP', 'WALL']);
 
 /**
  * 게시물을 띄우는 TV. 사용자 로그인 없이 관리자가 발급한 기기 토큰으로 접근한다.
@@ -357,7 +360,7 @@ export const devices = pgTable(
       .notNull()
       .default('LANDSCAPE'),
     // 편성 응답에 그대로 싣는 화면 설정 (요구사항 8절 확인 필요 13번: 기기별로 운영자가 정한다)
-    layout: displayLayoutEnum('layout').notNull().default('FOUR_GRID'),
+    layout: displayLayoutEnum('layout').notNull().default('WALL'),
     rotationSeconds: integer('rotation_seconds').notNull().default(10),
     refreshAfterSeconds: integer('refresh_after_seconds').notNull().default(60),
     // 비활성 기기는 토큰이 있어도 접근할 수 없다.
@@ -411,6 +414,14 @@ export const deviceTargetGroups = pgTable(
 
 export type Device = typeof devices.$inferSelect;
 
+/** 노출이 보인 자리. WALL: 벽에 작게, SPOTLIGHT: 크게 보기, STRIP: 띠 가운데 */
+export const playPlacementEnum = pgEnum('play_placement', [
+  'WALL',
+  'SPOTLIGHT',
+  'STRIP',
+]);
+export type PlayPlacement = (typeof playPlacementEnum.enumValues)[number];
+
 /**
  * 노출 이벤트: 기기가 포스터를 정상 렌더링한 기록 (FR-DASH-03). 사람이 본 횟수가 아니다.
  * 재시작·재연결로 같은 batch가 다시 올 수 있어 (기기, eventId)로 중복을 막는다.
@@ -431,6 +442,8 @@ export const playEvents = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
     durationMs: integer('duration_ms').notNull(),
     completed: boolean('completed').notNull(),
+    // 예전 플레이어는 보내지 않아 null이다.
+    placement: playPlacementEnum('placement'),
     receivedAt: timestamp('received_at', { withTimezone: true }).notNull(),
   },
   (table) => [
@@ -458,9 +471,12 @@ export const playEventDaily = pgTable(
     day: date('day', { mode: 'string' }).notNull(),
     submissionId: uuid('submission_id').notNull(),
     deviceId: uuid('device_id').notNull(),
+    // 벽(WALL)을 뺀 노출. 크게 보기·띠 가운데·자리를 모르는 예전 이벤트를 센다.
     impressions: integer('impressions').notNull(),
     completedImpressions: integer('completed_impressions').notNull(),
     totalDurationMs: bigint('total_duration_ms', { mode: 'number' }).notNull(),
+    // 벽에 작게 보인 노출. 같은 게시물이 이어서 크게 한 번 더 나오므로 impressions와 따로 센다.
+    wallImpressions: integer('wall_impressions').notNull().default(0),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
   },
   (table) => [

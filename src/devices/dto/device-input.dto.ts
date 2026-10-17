@@ -33,6 +33,21 @@ const trimToNull = ({ value }: { value: unknown }) => {
 };
 
 // 프론트 플레이어가 이 범위로 잘라 쓰므로(요구사항 8.2) 서버도 같은 범위만 저장한다.
+// 화면 전환 방식 개편 전 이름. 프론트가 새 값으로 바꿔 배포할 때까지 받아서 새 값으로 저장한다.
+// 응답에는 새 값만 나간다. 프론트 전환이 끝나면 지운다.
+const LEGACY_LAYOUTS = new Map<unknown, Device['layout']>([
+  ['FOUR_GRID', 'WALL'],
+  ['SINGLE', 'STRIP'],
+]);
+
+const legacyLayout = ({ value }: { value: unknown }) =>
+  LEGACY_LAYOUTS.get(value) ?? value;
+
+// rotationSeconds 설명. 편성 응답(DeviceLayoutDto)과 같은 뜻이다.
+export const ROTATION_SECONDS_DESCRIPTION = `화면 한 장이 머무는 시간(초).
+- WALL: 벽 한 쪽, 크게 보기 한 건이 각각 이 시간만큼 머문다
+- STRIP: 띠가 한 칸 미는 간격이다`;
+
 export const ROTATION_SECONDS_RANGE = { min: 5, max: 60 } as const;
 export const REFRESH_SECONDS_RANGE = { min: 15, max: 300 } as const;
 
@@ -76,9 +91,11 @@ class DeviceSettingsFields {
 
   @ApiPropertyOptional({
     enum: displayLayoutEnum.enumValues,
-    description: '편성 응답의 layout.type',
-    default: 'FOUR_GRID',
+    description: `편성 응답의 layout.type. WALL: 모아 보기, STRIP: 흐르는 띠.
+예전 값(FOUR_GRID → WALL, SINGLE → STRIP)도 한동안 받아서 새 값으로 저장한다`,
+    default: 'WALL',
   })
+  @Transform(legacyLayout)
   @ValidateIf((_, value) => value !== undefined)
   @IsIn(displayLayoutEnum.enumValues, {
     message: '레이아웃이 올바르지 않습니다.',
@@ -86,7 +103,7 @@ class DeviceSettingsFields {
   layout?: Device['layout'];
 
   @ApiPropertyOptional({
-    description: '포스터 전환 간격(초)',
+    description: ROTATION_SECONDS_DESCRIPTION,
     minimum: ROTATION_SECONDS_RANGE.min,
     maximum: ROTATION_SECONDS_RANGE.max,
     default: 10,

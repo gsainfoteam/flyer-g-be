@@ -15,6 +15,7 @@ import {
   playEventDaily,
   playEvents,
   submissions,
+  type PlayPlacement,
 } from '../src/db/schema.js';
 import { hashDeviceToken } from '../src/devices/auth/device-token.js';
 import { PlayEventAggregationJob } from '../src/jobs/play-event-aggregation.job.js';
@@ -115,6 +116,7 @@ describe('노출 통계 (e2e)', () => {
       startedAt: Date;
       completed?: boolean;
       durationMs?: number;
+      placement?: PlayPlacement | null;
     }[],
   ) {
     await db.insert(playEvents).values(
@@ -127,6 +129,7 @@ describe('노출 통계 (e2e)', () => {
         startedAt: event.startedAt,
         durationMs: event.durationMs ?? 10_000,
         completed: event.completed ?? true,
+        placement: event.placement ?? null,
         receivedAt: new Date(),
       })),
     );
@@ -141,6 +144,7 @@ describe('노출 통계 (e2e)', () => {
         impressions: playEventDaily.impressions,
         completedImpressions: playEventDaily.completedImpressions,
         totalDurationMs: playEventDaily.totalDurationMs,
+        wallImpressions: playEventDaily.wallImpressions,
       })
       .from(playEventDaily)
       .where(inArray(playEventDaily.submissionId, [mine, theirs]))
@@ -166,6 +170,22 @@ describe('노출 통계 (e2e)', () => {
           submissionId: mine,
           deviceId: deviceB,
           startedAt: at(day2, 7200_000),
+          placement: 'SPOTLIGHT',
+        },
+        // 벽 노출은 impressions·completed·duration에 넣지 않고 wallImpressions로 센다
+        {
+          submissionId: mine,
+          deviceId: deviceB,
+          startedAt: at(day2, 7100_000),
+          placement: 'WALL',
+        },
+        {
+          submissionId: mine,
+          deviceId: deviceB,
+          startedAt: at(day2, 7150_000),
+          placement: 'WALL',
+          completed: false,
+          durationMs: 3000,
         },
         { submissionId: theirs, deviceId: deviceB, startedAt: at(day1, 1000) },
       ]);
@@ -184,6 +204,7 @@ describe('노출 통계 (e2e)', () => {
             impressions: 1,
             completedImpressions: 1,
             totalDurationMs: 10_000,
+            wallImpressions: 0,
           },
           {
             day: day2,
@@ -192,6 +213,7 @@ describe('노출 통계 (e2e)', () => {
             impressions: 2,
             completedImpressions: 1,
             totalDurationMs: 14_000,
+            wallImpressions: 0,
           },
           {
             day: day2,
@@ -200,6 +222,7 @@ describe('노출 통계 (e2e)', () => {
             impressions: 1,
             completedImpressions: 1,
             totalDurationMs: 10_000,
+            wallImpressions: 2,
           },
           {
             day: day1,
@@ -208,6 +231,7 @@ describe('노출 통계 (e2e)', () => {
             impressions: 1,
             completedImpressions: 1,
             totalDurationMs: 10_000,
+            wallImpressions: 0,
           },
         ]),
       );
@@ -282,6 +306,7 @@ describe('노출 통계 (e2e)', () => {
           title: '내 공연',
           impressions: 5,
           completedImpressions: 4,
+          wallImpressions: 2,
           // 여러 날에 걸쳐도 기기는 한 번씩만 센다
           deviceCount: 2,
         },
@@ -296,6 +321,7 @@ describe('노출 통계 (e2e)', () => {
         expect.objectContaining({
           submissionId: mine,
           impressions: 3,
+          wallImpressions: 2,
           deviceCount: 2,
         }),
       ]);

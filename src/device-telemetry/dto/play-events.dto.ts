@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsISO8601,
   IsNotEmpty,
@@ -16,6 +17,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+import { playPlacementEnum, type PlayPlacement } from '../../db/schema.js';
 
 // JSON 본문 한도(100KB) 안에 여유 있게 들어가는 수. 오래 오프라인이었으면 나눠 보낸다.
 export const MAX_EVENTS_PER_REQUEST = 300;
@@ -74,6 +76,21 @@ export class PlayEventDto {
   })
   @IsBoolean()
   completed: boolean;
+
+  @ApiPropertyOptional({
+    description: `이 노출이 보인 자리. 모르면(예전 플레이어) null
+- WALL: 모아 보기의 벽에 작게 보임
+- SPOTLIGHT: 모아 보기의 크게 보기
+- STRIP: 흐르는 띠의 가운데 칸 (양옆 칸은 보내지 않는다)
+
+통계의 impressions는 WALL을 뺀 노출(SPOTLIGHT·STRIP·null)이고, WALL은 wallImpressions로 따로 센다`,
+    enum: playPlacementEnum.enumValues,
+    nullable: true,
+    example: 'SPOTLIGHT',
+  })
+  @IsOptional()
+  @IsIn(playPlacementEnum.enumValues)
+  placement?: PlayPlacement | null;
 }
 
 /** 요구사항 9.2 */
