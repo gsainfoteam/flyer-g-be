@@ -76,8 +76,8 @@ export class PlaylistItemDto {
     description: `영상 포스터만. 이미지는 null.
 
 재생 규칙
-- SINGLE: 끝까지 한 번 재생하고 다음으로 넘긴다. rotationSeconds보다 짧으면 그 시간이 찰 때까지 반복한다
-- FOUR_GRID: 칸 안에서 음소거로 반복 재생한다. 전환은 rotationSeconds를 따른다
+- WALL 크게 보기, STRIP 가운데 칸: 끝까지 한 번 재생한다. rotationSeconds보다 짧으면 그 시간이 찰 때까지 반복한다. 즉 이 화면은 max(durationMs, rotationSeconds × 1000)만큼 머문다
+- WALL 벽, STRIP 양옆 칸: 재생하지 않고 assetUrl(대표 프레임)을 띄운다. 저사양 TV가 여러 영상을 동시에 디코딩하지 않게 한다
 - 영상을 받는 중이거나 재생에 실패하면 assetUrl(대표 프레임)을 띄운다`,
     type: PlaylistVideoDto,
     nullable: true,
