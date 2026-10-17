@@ -4,6 +4,7 @@ import {
   displayLayoutEnum,
   type Device,
 } from '../../db/schema.js';
+import { ROTATION_SECONDS_DESCRIPTION } from './device-input.dto.js';
 
 export const DEVICE_STATUSES = ['ONLINE', 'OFFLINE', 'DISABLED'] as const;
 export type DeviceStatus = (typeof DEVICE_STATUSES)[number];
@@ -17,10 +18,14 @@ export class ResolutionDto {
 }
 
 export class DeviceLayoutDto {
-  @ApiProperty({ enum: displayLayoutEnum.enumValues, example: 'FOUR_GRID' })
+  @ApiProperty({
+    description: 'WALL: 모아 보기, STRIP: 흐르는 띠',
+    enum: displayLayoutEnum.enumValues,
+    example: 'WALL',
+  })
   type: Device['layout'];
 
-  @ApiProperty({ description: '포스터 전환 간격(초)', example: 10 })
+  @ApiProperty({ description: ROTATION_SECONDS_DESCRIPTION, example: 10 })
   rotationSeconds: number;
 }
 
