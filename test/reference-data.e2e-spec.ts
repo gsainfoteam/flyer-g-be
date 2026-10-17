@@ -130,10 +130,20 @@ describe('참조 데이터와 운영 설정 (e2e)', () => {
 
     expect(res.body).toEqual({
       maxUploadBytes: 10485760,
+      maxVideoUploadBytes: 104857600,
+      maxVideoDurationSeconds: 30,
       titleMaxLength: 80,
       maxPublishMonths: 3,
       minLeadTimeHours: 24,
-      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+      // e2e는 영상 업로드를 켜고 돈다 (vitest.config.e2e.ts)
+      allowedMimeTypes: [
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'video/mp4',
+        'video/quicktime',
+        'video/webm',
+      ],
       allowedDetailUrlHosts: ['ziggle.gistory.me'],
     });
   });

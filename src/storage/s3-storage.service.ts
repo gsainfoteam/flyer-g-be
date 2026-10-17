@@ -1,4 +1,8 @@
 import { Trace } from '@gsainfoteam/nest-observability';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
+import type { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -102,6 +106,35 @@ export class S3StorageService
         Bucket: this.bucket,
         Key: key,
         Body: body,
+        ContentType: options.contentType,
+        CacheControl: options.cacheControl,
+      }),
+    );
+  }
+
+  async downloadToFile(key: string, filePath: string): Promise<void> {
+    const object = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+    if (!object.Body) {
+      throw new Error(`Empty body for ${key}`);
+    }
+    await pipeline(object.Body as Readable, createWriteStream(filePath));
+  }
+
+  async putFile(
+    key: string,
+    filePath: string,
+    options: { contentType: string; cacheControl?: string },
+  ): Promise<void> {
+    const { size } = await stat(filePath);
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: createReadStream(filePath),
+        // 스트림 본문은 길이를 알려 줘야 SDK가 한 번에 올린다 (영상 한도 100MB < 단일 PUT 한도 5GB)
+        ContentLength: size,
         ContentType: options.contentType,
         CacheControl: options.cacheControl,
       }),

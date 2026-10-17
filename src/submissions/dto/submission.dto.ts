@@ -46,7 +46,7 @@ export class SubmissionDto {
   assetId: string;
 
   @ApiProperty({
-    description: '포스터 미리보기 (1280x1280 안)',
+    description: '포스터 미리보기 (1280x1280 안). 영상은 대표 프레임',
     example:
       'https://gsainfoteam-icarus-flyer-g-production.s3.ap-northeast-2.amazonaws.com/assets/0f8e2c1a-.../preview.webp',
   })
@@ -60,8 +60,7 @@ export class SubmissionDto {
   posterThumbUrl: string;
 
   @ApiProperty({
-    description:
-      '포스터 종류. 지금은 IMAGE만 있다. VIDEO는 영상 업로드를 열면 생긴다',
+    description: '포스터 종류. VIDEO면 posterVideoUrl로 재생한다',
     enum: ['IMAGE', 'VIDEO'],
     example: 'IMAGE',
   })
@@ -69,13 +68,13 @@ export class SubmissionDto {
 
   @ApiProperty({
     description:
-      '포스터 원본 가로(px, EXIF 회전 적용 후). 미리보기는 1280px 안으로 줄였으므로 해상도 판단은 이 값으로 한다',
+      '포스터 원본 가로(px, EXIF·영상 회전 정보 적용 후). 미리보기는 1280px 안으로 줄였으므로 해상도 판단은 이 값으로 한다',
     example: 1536,
   })
   posterWidth: number;
 
   @ApiProperty({
-    description: '포스터 원본 세로(px, EXIF 회전 적용 후)',
+    description: '포스터 원본 세로(px, EXIF·영상 회전 정보 적용 후)',
     example: 2048,
   })
   posterHeight: number;
@@ -87,6 +86,15 @@ export class SubmissionDto {
     example: null,
   })
   posterDurationMs: number | null;
+
+  @ApiProperty({
+    description:
+      '영상 포스터의 재생용 mp4 (H.264·AAC, 1920x1080 안). 검토 화면에서 재생한다. 이미지는 null',
+    type: String,
+    nullable: true,
+    example: null,
+  })
+  posterVideoUrl: string | null;
 
   @ApiProperty({
     type: String,

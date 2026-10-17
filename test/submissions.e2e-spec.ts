@@ -148,6 +148,7 @@ describe('게시 신청 (e2e)', () => {
         posterWidth: 1536,
         posterHeight: 2048,
         posterDurationMs: null,
+        posterVideoUrl: null,
         detailUrl: body.detailUrl,
         startAt: body.startAt,
         endAt: body.endAt,
@@ -299,6 +300,25 @@ describe('게시 신청 (e2e)', () => {
       );
       expect(notReady.body.fields).toEqual({
         assetId: '포스터 업로드가 끝나지 않았습니다.',
+      });
+
+      const [processing] = await db
+        .insert(assets)
+        .values({
+          ownerId: owner.user.id,
+          kind: 'VIDEO',
+          status: 'PROCESSING',
+          fileName: 'clip.mp4',
+          declaredMimeType: 'video/mp4',
+          declaredSizeBytes: 1,
+          uploadExpiresAt: new Date(),
+        })
+        .returning({ id: assets.id });
+      const converting = await create(
+        validBody({ assetId: processing.id }),
+      ).expect(422);
+      expect(converting.body.fields).toEqual({
+        assetId: '영상 변환이 끝나지 않았습니다. 잠시 후 다시 시도해주세요.',
       });
     });
 

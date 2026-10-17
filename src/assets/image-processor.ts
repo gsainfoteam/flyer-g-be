@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import sharp, { type Metadata } from 'sharp';
-import type { AllowedMimeType } from '../policy/signage-policy.js';
+import sharp, { type Metadata, type Sharp } from 'sharp';
+import type { ImageMimeType } from '../policy/signage-policy.js';
 
 /**
  * 공개용 이미지 크기. 원본 대신 이걸 내려줘서 TV가 매번 수 MB를 받지 않게 한다.
@@ -20,18 +20,18 @@ export type VariantName = keyof typeof VARIANTS;
 // 압축 폭탄 방지. 10MB 안에 수억 픽셀을 담은 이미지를 디코딩하다 메모리가 터지지 않게 한다.
 const MAX_INPUT_PIXELS = 50_000_000;
 
-const MIME_BY_FORMAT: Partial<Record<string, AllowedMimeType>> = {
+const MIME_BY_FORMAT: Partial<Record<string, ImageMimeType>> = {
   jpeg: 'image/jpeg',
   png: 'image/png',
   webp: 'image/webp',
 };
 
-/** 사용자가 고쳐서 다시 올려야 하는 문제. message는 업로드 칸에 그대로 표시된다. */
-export class ImageRejectedError extends Error {}
+/** 사용자가 고쳐서 다시 올려야 하는 문제. message는 업로드 칸에 그대로 표시된다. 영상 처리도 같이 쓴다. */
+export class MediaRejectedError extends Error {}
 
 export type ProcessedImage = {
   /** 파일 내용으로 판별한 형식. 확장자·신고한 MIME은 믿지 않는다 */
-  mimeType: AllowedMimeType;
+  mimeType: ImageMimeType;
   /** EXIF 회전을 적용한 뒤의 크기 */
   width: number;
   height: number;
@@ -56,23 +56,46 @@ export async function processImage(bytes: Buffer): Promise<ProcessedImage> {
   try {
     metadata = await input().metadata();
   } catch {
-    throw new ImageRejectedError(
+    throw new MediaRejectedError(
       '이미지를 읽을 수 없습니다. JPEG, PNG, WebP 파일만 올릴 수 있습니다.',
     );
   }
 
   const mimeType = MIME_BY_FORMAT[metadata.format ?? ''];
   if (!mimeType) {
-    throw new ImageRejectedError(
+    throw new MediaRejectedError(
       '지원하지 않는 형식입니다. JPEG, PNG, WebP 파일만 올릴 수 있습니다.',
     );
   }
   if ((metadata.pages ?? 1) > 1) {
-    throw new ImageRejectedError('움직이는 이미지는 올릴 수 없습니다.');
+    throw new MediaRejectedError('움직이는 이미지는 올릴 수 없습니다.');
   }
 
   const { width, height } = metadata.autoOrient;
 
+  // 헤더는 멀쩡하지만 본문이 잘렸거나 깨진 파일이면 여기서 걸린다
+  const variants = await makeVariants(
+    input,
+    '이미지가 손상되어 열 수 없습니다. 파일을 확인하고 다시 올려주세요.',
+  );
+
+  return {
+    mimeType,
+    width,
+    height,
+    checksum: sha256Checksum(bytes),
+    variants,
+  };
+}
+
+/**
+ * 공개용 webp 이미지를 만든다. 영상은 대표 프레임으로 같은 이미지를 만든다.
+ * 디코딩에 실패하면 corruptMessage로 거절한다.
+ */
+export async function makeVariants(
+  input: () => Sharp,
+  corruptMessage: string,
+): Promise<Record<VariantName, Buffer>> {
   const variants = {} as Record<VariantName, Buffer>;
   try {
     for (const [name, spec] of Object.entries(VARIANTS)) {
@@ -89,17 +112,7 @@ export async function processImage(bytes: Buffer): Promise<ProcessedImage> {
         .toBuffer();
     }
   } catch {
-    // 헤더는 멀쩡하지만 본문이 잘렸거나 깨진 파일
-    throw new ImageRejectedError(
-      '이미지가 손상되어 열 수 없습니다. 파일을 확인하고 다시 올려주세요.',
-    );
+    throw new MediaRejectedError(corruptMessage);
   }
-
-  return {
-    mimeType,
-    width,
-    height,
-    checksum: sha256Checksum(bytes),
-    variants,
-  };
+  return variants;
 }

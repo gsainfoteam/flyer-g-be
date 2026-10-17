@@ -20,7 +20,7 @@ import type { PlaylistDto, PlaylistItemDto } from './dto/playlist.dto.js';
  * - startAt <= 지금 < endAt
  * - 중단·취소·반려·검토 대기는 빠진다. 중단하면 다음 편성 요청부터 사라진다
  * - 이 기기가 대상: 신청에 대상 그룹이 없으면 전체, 있으면 기기 그룹과 하나라도 겹쳐야 한다
- * - 포스터 검증이 끝난 것(READY)
+ * - 포스터 검증이 끝난 것(READY). 영상은 변환까지 끝난 것
  */
 @Trace()
 @Injectable()
@@ -60,6 +60,9 @@ export class PlaylistService {
         checksum: assets.checksum,
         width: assets.width,
         height: assets.height,
+        kind: assets.kind,
+        durationMs: assets.durationMs,
+        hasAudio: assets.hasAudio,
         subtitle: submissions.subtitle,
         location: submissions.location,
         organizerName: submissions.organizerName,
@@ -89,11 +92,21 @@ export class PlaylistService {
       revision: row.revision,
       title: row.title,
       category: row.category,
-      kind: 'IMAGE',
+      kind: row.kind,
       width: row.width!,
       height: row.height!,
-      durationMs: null,
+      durationMs: row.durationMs,
       assetUrl: this.assetsService.variantUrls(row.assetId).tv,
+      video:
+        row.kind === 'VIDEO'
+          ? {
+              url: this.assetsService.videoUrl({
+                id: row.assetId,
+                kind: row.kind,
+              })!,
+              hasAudio: row.hasAudio!,
+            }
+          : null,
       detailUrl: row.detailUrl,
       startsAt: row.startAt.toISOString(),
       endsAt: row.endAt.toISOString(),
