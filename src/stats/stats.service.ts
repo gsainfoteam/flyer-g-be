@@ -52,6 +52,8 @@ export class StatsService {
             sql<number>`sum(${playEventDaily.completedImpressions})`.mapWith(
               Number,
             ),
+          wallImpressions:
+            sql<number>`sum(${playEventDaily.wallImpressions})`.mapWith(Number),
           deviceCount:
             sql<number>`count(distinct ${playEventDaily.deviceId})`.mapWith(
               Number,

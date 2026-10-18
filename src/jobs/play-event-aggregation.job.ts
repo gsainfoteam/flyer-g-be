@@ -98,12 +98,18 @@ export class PlayEventAggregationJob {
     await tx
       .delete(playEventDaily)
       .where(sql`${playEventDaily.day} in (${dayList})`);
+    // 벽(WALL) 노출은 같은 게시물이 이어서 크게 한 번 더 나오므로 impressions와 섞지 않는다.
+    // impressions·completed·duration은 벽을 뺀 노출(자리를 모르는 예전 이벤트 포함)만 센다.
+    const notWall = sql`${playEvents.placement} is distinct from 'WALL'`;
     await tx.execute(sql`
       insert into ${playEventDaily}
-        (day, submission_id, device_id, impressions, completed_impressions, total_duration_ms, updated_at)
+        (day, submission_id, device_id, impressions, completed_impressions, total_duration_ms, wall_impressions, updated_at)
       select ${seoulDay}, ${playEvents.submissionId}, ${playEvents.deviceId},
-             count(*), count(*) filter (where ${playEvents.completed}),
-             coalesce(sum(${playEvents.durationMs}), 0), ${now.toISOString()}::timestamptz
+             count(*) filter (where ${notWall}),
+             count(*) filter (where ${notWall} and ${playEvents.completed}),
+             coalesce(sum(${playEvents.durationMs}) filter (where ${notWall}), 0),
+             count(*) filter (where not (${notWall})),
+             ${now.toISOString()}::timestamptz
       from ${playEvents}
       where ${playEvents.startedAt} >= ${from.toISOString()}::timestamptz
         and ${playEvents.startedAt} < ${to.toISOString()}::timestamptz

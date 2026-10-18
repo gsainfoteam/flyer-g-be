@@ -200,8 +200,43 @@ describe('기기 런타임 (e2e)', () => {
         revision: 3,
         durationMs: 3500,
         completed: false,
+        // 예전 플레이어는 보내지 않는다
+        placement: null,
       });
       expect(row.startedAt.toISOString()).toBe(sent.startedAt);
+    });
+
+    it('보인 자리(placement)를 저장하고, 모르는 값은 422', async () => {
+      const sent = [
+        event({ placement: 'WALL' }),
+        event({ placement: 'SPOTLIGHT' }),
+        event({ placement: 'STRIP' }),
+        event({ placement: null }),
+      ];
+      await sendEvents(tv, sent).expect(200);
+
+      const rows = await db
+        .select({
+          eventId: playEvents.eventId,
+          placement: playEvents.placement,
+        })
+        .from(playEvents)
+        .where(
+          inArray(
+            playEvents.eventId,
+            sent.map((e) => e.eventId),
+          ),
+        );
+      expect(rows).toEqual(
+        expect.arrayContaining(
+          sent.map((e) => ({ eventId: e.eventId, placement: e.placement })),
+        ),
+      );
+
+      const res = await sendEvents(tv, [event({ placement: 'GRID' })]).expect(
+        422,
+      );
+      expect(Object.keys(res.body.fields)).toEqual(['events.0.placement']);
     });
 
     it('빈 목록은 200', async () => {

@@ -107,7 +107,7 @@ describe('기기 등록과 인증 (e2e)', () => {
         lastSeenAt: null,
         appVersion: null,
         status: 'OFFLINE',
-        layout: { type: 'FOUR_GRID', rotationSeconds: 10 },
+        layout: { type: 'WALL', rotationSeconds: 10 },
         refreshAfterSeconds: 60,
       });
       expect(res.body.token).toMatch(/^fgd_[A-Za-z0-9_-]{43}$/);
@@ -281,16 +281,33 @@ describe('기기 등록과 인증 (e2e)', () => {
       expect(await countOf()).toBe(before + 1);
 
       const res = await patch(id, {
-        layout: 'SINGLE',
+        layout: 'STRIP',
         rotationSeconds: 20,
         groupIds: [],
       }).expect(200);
       expect(res.body).toMatchObject({
         name: 'E2E 로비 TV',
         groupIds: [],
-        layout: { type: 'SINGLE', rotationSeconds: 20 },
+        layout: { type: 'STRIP', rotationSeconds: 20 },
       });
       expect(await countOf()).toBe(before);
+    });
+
+    it('예전 레이아웃 값(FOUR_GRID·SINGLE)도 받아서 새 값으로 저장한다', async () => {
+      const { id } = await register({ layout: 'SINGLE' });
+      const [row] = await db
+        .select({ layout: devices.layout })
+        .from(devices)
+        .where(eq(devices.id, id));
+      expect(row.layout).toBe('STRIP');
+
+      const res = await patch(id, { layout: 'FOUR_GRID' }).expect(200);
+      expect(res.body.layout.type).toBe('WALL');
+
+      const invalid = await patch(id, { layout: 'GRID' }).expect(422);
+      expect(invalid.body.fields).toEqual({
+        layout: '레이아웃이 올바르지 않습니다.',
+      });
     });
 
     it('이미 연결된 숨긴 그룹은 그대로 두고 고칠 수 있지만, 새로 추가할 수는 없다', async () => {
