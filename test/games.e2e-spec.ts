@@ -5,6 +5,7 @@ import { inArray } from 'drizzle-orm';
 import request from 'supertest';
 import { WebSocket } from 'ws';
 import { AppModule } from '../src/app.module.js';
+import { RELAY_LIMITS } from '../src/games/game-relay.js';
 import { DB_CONNECTION, type Database } from '../src/db/index.js';
 import { devices } from '../src/db/schema.js';
 import {
@@ -142,6 +143,38 @@ describe('게임 중계 WebSocket (e2e)', () => {
 
     const badRole = connect(`room=${deviceId}&role=admin`);
     await expect(opened(badRole)).rejects.toThrow(/400/);
+  });
+
+  it('참가자는 실제 기기의 방에만 붙는다', async () => {
+    const missing = connect(
+      'room=00000000-0000-4000-8000-000000000000&role=player',
+    );
+    await expect(opened(missing)).rejects.toThrow(/404/);
+    const notUuid = connect('room=lobby-a&role=player');
+    await expect(opened(notUuid)).rejects.toThrow(/404/);
+  });
+
+  it('한 IP가 한 방을 채우지 못한다', async () => {
+    const mine: WebSocket[] = [];
+    for (
+      let index = 0;
+      index < RELAY_LIMITS.maxConnectionsPerIpPerRoom;
+      index++
+    ) {
+      const socket = connect(`room=${otherDeviceId}&role=player`);
+      mine.push(socket);
+      await opened(socket);
+    }
+    const extra = connect(`room=${otherDeviceId}&role=player`);
+    await expect(opened(extra)).rejects.toThrow(/429/);
+
+    // 하나가 나가면 다시 들어올 수 있다.
+    const left = closedWith(mine[0]!);
+    mine[0]!.close();
+    await left;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const again = connect(`room=${otherDeviceId}&role=player`);
+    await opened(again);
   });
 
   it('다른 경로의 upgrade 요청은 이전처럼 닫힌다', async () => {

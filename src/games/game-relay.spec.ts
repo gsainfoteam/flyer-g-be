@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ConnectionCounter,
   GameRelay,
   MessageBudget,
   RELAY_CLOSE,
   RELAY_LIMITS,
+  clientIp,
   isValidRoomId,
   type RelaySocket,
 } from './game-relay.js';
@@ -146,5 +148,27 @@ describe('isValidRoomId', () => {
     expect(isValidRoomId('../etc')).toBe(false);
     expect(isValidRoomId('')).toBe(false);
     expect(isValidRoomId(null)).toBe(false);
+  });
+});
+
+describe('ConnectionCounter', () => {
+  it('늘리고 줄이며, 0이 되면 지운다', () => {
+    const counter = new ConnectionCounter();
+    counter.add('1.2.3.4');
+    counter.add('1.2.3.4');
+    expect(counter.get('1.2.3.4')).toBe(2);
+    counter.remove('1.2.3.4');
+    counter.remove('1.2.3.4');
+    counter.remove('1.2.3.4');
+    expect(counter.get('1.2.3.4')).toBe(0);
+  });
+});
+
+describe('clientIp', () => {
+  it('프록시가 붙인 맨 끝 주소를 쓰고, 요청자가 적은 앞쪽 값은 믿지 않는다', () => {
+    expect(clientIp('6.6.6.6, 203.0.113.7', '10.0.0.2')).toBe('203.0.113.7');
+    expect(clientIp(['1.1.1.1', '9.9.9.9'], '10.0.0.2')).toBe('9.9.9.9');
+    expect(clientIp(undefined, '10.0.0.2')).toBe('10.0.0.2');
+    expect(clientIp(undefined, undefined)).toBe('unknown');
   });
 });

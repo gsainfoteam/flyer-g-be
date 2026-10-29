@@ -20,8 +20,10 @@ import {
   looksLikeDeviceToken,
 } from '../devices/auth/device-token.js';
 import {
+  ConnectionCounter,
   GameRelay,
   MessageBudget,
+  clientIp,
   RELAY_CLOSE,
   RELAY_LIMITS,
   isValidRoomId,
@@ -30,6 +32,11 @@ import {
 
 /** 게임 연결 경로. REST API와 같은 호스트에 둔다. */
 export const GAME_SOCKET_PATH = '/games/ws';
+
+const ROOM_CACHE_MS = 60_000;
+/** 방 확인 결과를 기억할 최대 개수. 넘으면 비운다. 없는 id로 메모리를 채우지 못하게. */
+const ROOM_CACHE_LIMIT = 1_000;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Role = 'host' | 'player';
 
@@ -53,6 +60,13 @@ export class GameSocketService
   private server: WebSocketServer | null = null;
   private heartbeat: NodeJS.Timeout | null = null;
   private readonly alive = new WeakSet<WebSocket>();
+  /** IP별, IP·방별 연결 수 */
+  private readonly perIp = new ConnectionCounter();
+  /** 참가자가 붙으려는 방(기기)이 있는지. 매번 DB를 보지 않게 잠시 기억한다. */
+  private readonly knownRooms = new Map<
+    string,
+    { active: boolean; at: number }
+  >();
 
   constructor(
     private readonly adapterHost: HttpAdapterHost,
@@ -148,9 +162,63 @@ export class GameSocketService
     if (server.clients.size >= RELAY_LIMITS.maxConnections) {
       return this.reject(socket, 503, 'Service Unavailable');
     }
-    server.handleUpgrade(request, socket, head, (client) =>
-      this.accept(client, roomId, role),
+    const ip = clientIp(
+      request.headers['x-forwarded-for'],
+      request.socket.remoteAddress,
     );
+    const roomKey = `${ip}|${roomId}`;
+    if (
+      this.perIp.get(ip) >= RELAY_LIMITS.maxConnectionsPerIp ||
+      this.perIp.get(roomKey) >= RELAY_LIMITS.maxConnectionsPerIpPerRoom
+    ) {
+      return this.reject(socket, 429, 'Too Many Requests');
+    }
+    // 연결 수를 먼저 잡아 둔다. 방 확인을 기다리는 사이 같은 IP가 한꺼번에 몰려도
+    // 상한을 넘지 못한다.
+    this.perIp.add(ip);
+    this.perIp.add(roomKey);
+    const release = () => {
+      this.perIp.remove(ip);
+      this.perIp.remove(roomKey);
+    };
+
+    // 참가자는 실제 기기의 방에만 붙는다. 없는 방에 연결을 쌓아 두지 못하게 한다.
+    // TV는 기기 토큰으로 따로 확인한다.
+    const check =
+      role === 'player' ? this.roomExists(roomId) : Promise.resolve(true);
+    void check.then((exists) => {
+      // 확인을 기다리는 사이 요청자가 떠났으면 정리만 한다.
+      if (socket.destroyed) return release();
+      if (!exists) {
+        release();
+        return this.reject(socket, 404, 'Not Found');
+      }
+      server.handleUpgrade(request, socket, head, (client) => {
+        client.once('close', release);
+        this.accept(client, roomId, role);
+      });
+    });
+  }
+
+  /** 활성 기기의 id인지. 결과를 1분 동안 기억한다. */
+  private async roomExists(roomId: string): Promise<boolean> {
+    const cached = this.knownRooms.get(roomId);
+    if (cached && Date.now() - cached.at < ROOM_CACHE_MS) return cached.active;
+    // 기기 id는 uuid다. 다른 모양은 DB에 묻지 않는다(Postgres가 형식 오류를 낸다).
+    if (!UUID.test(roomId)) return false;
+    try {
+      const [device] = await this.db
+        .select({ id: devices.id })
+        .from(devices)
+        .where(and(eq(devices.id, roomId), eq(devices.isActive, true)));
+      const active = device !== undefined;
+      if (this.knownRooms.size > ROOM_CACHE_LIMIT) this.knownRooms.clear();
+      this.knownRooms.set(roomId, { active, at: Date.now() });
+      return active;
+    } catch (error) {
+      this.logger.error('Failed to look up game room', error);
+      return false;
+    }
   }
 
   private accept(client: WebSocket, roomId: string, role: Role) {

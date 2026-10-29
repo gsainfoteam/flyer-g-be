@@ -19,10 +19,20 @@ export const RELAY_LIMITS = {
   maxPlayersPerRoom: 30,
   /** 서버 전체 동시 연결 상한 */
   maxConnections: 500,
+  /**
+   * IP 하나의 동시 연결 상한. 한 사람이 연결을 쌓아 서버 자리를 다 차지하지 못하게 한다.
+   * 기숙사 와이파이는 여러 학생이 같은 공인 IP로 나가므로 넉넉히 둔다.
+   */
+  maxConnectionsPerIp: 50,
+  /**
+   * IP 하나가 한 방에 둘 수 있는 연결 수. 한 사람이 방을 채워 다른 학생이 못 들어오게
+   * 막는다. 같은 와이파이의 한 판 정원(10명)은 들어올 수 있게 그보다 크게 둔다.
+   */
+  maxConnectionsPerIpPerRoom: 12,
   /** 메시지 한 개의 최대 크기(byte) */
   maxMessageBytes: 4096,
   /** 연결 하나가 1초에 보낼 수 있는 메시지 수. 넘는 메시지는 버린다. */
-  messagesPerSecond: 40,
+  messagesPerSecond: 20,
   /** 호스트가 연결 뒤 기기 토큰을 보내야 하는 시간 */
   authTimeoutMs: 5_000,
   /** 연결 확인(ping) 간격. 프록시가 놀고 있는 연결을 끊지 않게 한다. */
@@ -172,6 +182,43 @@ export class MessageBudget {
     this.tokens -= 1;
     return true;
   }
+}
+
+/**
+ * IP별 연결 수. 연결할 때 늘리고 끊길 때 줄인다. 0이 되면 항목을 지운다.
+ */
+export class ConnectionCounter {
+  private readonly counts = new Map<string, number>();
+
+  get(key: string): number {
+    return this.counts.get(key) ?? 0;
+  }
+
+  add(key: string): void {
+    this.counts.set(key, this.get(key) + 1);
+  }
+
+  remove(key: string): void {
+    const next = this.get(key) - 1;
+    if (next <= 0) this.counts.delete(key);
+    else this.counts.set(key, next);
+  }
+}
+
+/**
+ * 요청한 사람의 IP. Traefik이 앞에 있어 소켓 주소는 Traefik이다. Traefik은 받은
+ * X-Forwarded-For 끝에 자기가 본 주소를 붙이므로 맨 끝 값을 쓴다. 앞쪽 값은 요청자가
+ * 마음대로 적을 수 있어 믿지 않는다.
+ */
+export function clientIp(
+  forwardedFor: string | string[] | undefined,
+  remoteAddress: string | undefined,
+): string {
+  const header = Array.isArray(forwardedFor)
+    ? forwardedFor.at(-1)
+    : forwardedFor;
+  const last = header?.split(',').at(-1)?.trim();
+  return last || remoteAddress || 'unknown';
 }
 
 /** 방 id는 기기 id다. 경로·로그에 그대로 쓰므로 모양을 좁힌다. */
