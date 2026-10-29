@@ -41,8 +41,7 @@ export const RELAY_CLOSE = {
 
 /** 서버 → 참가자 */
 export type PlayerFrame =
-  | { type: 'host'; online: boolean }
-  | { type: 'message'; data: unknown };
+  { type: 'host'; online: boolean } | { type: 'message'; data: unknown };
 
 /** 서버 → 호스트 */
 export type HostFrame =
@@ -69,7 +68,8 @@ export class GameRelay {
 
   private dropIfEmpty(roomId: string) {
     const room = this.rooms.get(roomId);
-    if (room && !room.host && room.players.size === 0) this.rooms.delete(roomId);
+    if (room && !room.host && room.players.size === 0)
+      this.rooms.delete(roomId);
   }
 
   private toPlayers(room: Room, frame: PlayerFrame) {
@@ -98,7 +98,10 @@ export class GameRelay {
     }
     room.players.set(socket.id, socket);
     socket.send(
-      JSON.stringify({ type: 'host', online: room.host !== null } satisfies PlayerFrame),
+      JSON.stringify({
+        type: 'host',
+        online: room.host !== null,
+      } satisfies PlayerFrame),
     );
     return true;
   }
@@ -112,7 +115,9 @@ export class GameRelay {
       this.toPlayers(room, { type: 'host', online: false });
     } else if (room.players.get(socket.id) === socket) {
       room.players.delete(socket.id);
-      room.host?.send(JSON.stringify({ type: 'left', from: socket.id } satisfies HostFrame));
+      room.host?.send(
+        JSON.stringify({ type: 'left', from: socket.id } satisfies HostFrame),
+      );
     }
     this.dropIfEmpty(roomId);
   }
@@ -129,7 +134,11 @@ export class GameRelay {
     const room = this.rooms.get(roomId);
     if (!room?.host || room.players.get(socket.id) !== socket) return;
     room.host.send(
-      JSON.stringify({ type: 'message', from: socket.id, data } satisfies HostFrame),
+      JSON.stringify({
+        type: 'message',
+        from: socket.id,
+        data,
+      } satisfies HostFrame),
     );
   }
 

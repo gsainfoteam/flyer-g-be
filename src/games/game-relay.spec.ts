@@ -37,7 +37,11 @@ describe('GameRelay', () => {
     relay.addPlayer('room', b);
 
     relay.fromPlayer('room', a, { kind: 'join' });
-    expect(host.sent).toContainEqual({ type: 'message', from: 'a', data: { kind: 'join' } });
+    expect(host.sent).toContainEqual({
+      type: 'message',
+      from: 'a',
+      data: { kind: 'join' },
+    });
 
     relay.fromHost('room', host, { kind: 'state' });
     expect(a.sent).toContainEqual({ type: 'message', data: { kind: 'state' } });
@@ -82,7 +86,11 @@ describe('GameRelay', () => {
     // 닫힌 이전 호스트의 close 이벤트가 새 호스트를 지우지 않는다.
     relay.remove('room', old);
     relay.fromPlayer('room', a, 'hi');
-    expect(next.sent).toContainEqual({ type: 'message', from: 'a', data: 'hi' });
+    expect(next.sent).toContainEqual({
+      type: 'message',
+      from: 'a',
+      data: 'hi',
+    });
   });
 
   it('참가자가 나가면 호스트에게 알린다', () => {

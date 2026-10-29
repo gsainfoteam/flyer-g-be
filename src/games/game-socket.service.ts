@@ -62,7 +62,11 @@ export class GameSocketService
 
   onApplicationBootstrap(): void {
     const httpServer = this.adapterHost.httpAdapter.getHttpServer() as {
-      on(event: 'upgrade', listener: (req: IncomingMessage, socket: Duplex, head: Buffer) => void): void;
+      on(
+        event: 'upgrade',
+        listener: (req: IncomingMessage, socket: Duplex, head: Buffer) => void,
+      ): void;
+      listenerCount(event: 'upgrade'): number;
     };
     this.server = new WebSocketServer({
       noServer: true,
@@ -71,9 +75,14 @@ export class GameSocketService
 
     httpServer.on('upgrade', (request, socket, head) => {
       const url = new URL(request.url ?? '/', 'http://localhost');
-      // 다른 경로의 upgrade는 건드리지 않는다.
-      if (url.pathname !== GAME_SOCKET_PATH) return;
-      this.handleUpgrade(request, socket, head, url);
+      if (url.pathname === GAME_SOCKET_PATH) {
+        this.handleUpgrade(request, socket, head, url);
+        return;
+      }
+      // 다른 경로의 upgrade는 원래대로 둔다. Node는 upgrade 리스너가 하나도 없을 때만
+      // 그 연결을 스스로 닫는다. 이 리스너가 생겨 그 동작이 사라지지 않도록, 다른
+      // 리스너가 없으면 대신 닫는다.
+      if (httpServer.listenerCount('upgrade') === 1) socket.destroy();
     });
 
     // 응답이 없는 연결을 정리하고, 프록시가 놀고 있는 연결을 끊지 않게 한다.
@@ -87,6 +96,8 @@ export class GameSocketService
         client.ping();
       }
     }, RELAY_LIMITS.heartbeatMs);
+    // 이 타이머 때문에 프로세스가 내려가지 못하는 일이 없게 한다(테스트 등).
+    this.heartbeat.unref();
 
     this.logger.log(`Game sockets listening on ${GAME_SOCKET_PATH}`);
   }
@@ -158,7 +169,9 @@ export class GameSocketService
     client.on('close', () => {
       if (joined) this.relay.remove(roomId, socket);
     });
-    client.on('error', (error) => this.logger.warn(`Socket error: ${error.message}`));
+    client.on('error', (error) =>
+      this.logger.warn(`Socket error: ${error.message}`),
+    );
 
     if (role === 'player') {
       if (!this.relay.addPlayer(roomId, socket)) {
@@ -168,7 +181,8 @@ export class GameSocketService
       joined = true;
     } else {
       const timer = setTimeout(
-        () => client.close(RELAY_CLOSE.unauthorized, 'Authentication timed out'),
+        () =>
+          client.close(RELAY_CLOSE.unauthorized, 'Authentication timed out'),
         RELAY_LIMITS.authTimeoutMs,
       );
       client.once('close', () => clearTimeout(timer));
@@ -178,8 +192,12 @@ export class GameSocketService
           if (client.readyState !== WebSocket.OPEN) return;
           if (result !== 'ok') {
             client.close(
-              result === 'forbidden' ? RELAY_CLOSE.forbidden : RELAY_CLOSE.unauthorized,
-              result === 'forbidden' ? 'Token does not match this room' : 'Invalid device token',
+              result === 'forbidden'
+                ? RELAY_CLOSE.forbidden
+                : RELAY_CLOSE.unauthorized,
+              result === 'forbidden'
+                ? 'Token does not match this room'
+                : 'Invalid device token',
             );
             return;
           }
