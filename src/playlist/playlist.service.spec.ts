@@ -11,6 +11,7 @@ const item = (overrides: Partial<PlaylistItemDto> = {}): PlaylistItemDto => ({
   height: 2048,
   durationMs: null,
   assetUrl: 'https://cdn.test/assets/a/tv.webp',
+  video: null,
   detailUrl: null,
   startsAt: '2026-07-30T00:00:00.000Z',
   endsAt: '2026-08-06T14:59:59.000Z',

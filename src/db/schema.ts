@@ -136,11 +136,17 @@ export const assetStatusEnum = pgEnum('asset_status', [
   'READY',
   // 형식·크기·해상도 검증에 실패했다. 원본은 지웠다
   'REJECTED',
+  // 영상만. 업로드를 확인했고 변환 대기열에 있다 (src/assets/video-processing.service.ts)
+  'PROCESSING',
 ]);
 
+export const assetKindEnum = pgEnum('asset_kind', ['IMAGE', 'VIDEO']);
+
 /**
- * 업로드한 포스터 이미지. 원본은 uploads/<id>(비공개)에 받아 검증한 뒤 지우고,
- * EXIF를 뺀 변형 이미지만 assets/<id>/<variant>.webp(공개)에 남긴다.
+ * 업로드한 포스터(이미지 또는 영상). 원본은 uploads/<id>(비공개)에 받아 검증한 뒤 지우고,
+ * 메타데이터를 뺀 공개용 파일만 assets/<id>/ 아래(공개)에 남긴다.
+ * - 이미지: <variant>.webp
+ * - 영상: video.mp4와, 대표 프레임으로 만든 <variant>.webp
  * 내용이 바뀌지 않으므로 포스터를 바꾸려면 새 asset을 만든다.
  */
 export const assets = pgTable(
@@ -151,6 +157,8 @@ export const assets = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     status: assetStatusEnum('status').notNull().default('PENDING_UPLOAD'),
+    // presign에서 신고한 형식으로 정한다. 서명 URL이 Content-Type을 고정하므로 바뀌지 않는다
+    kind: assetKindEnum('kind').notNull().default('IMAGE'),
 
     // presign 요청에서 사용자가 알려 준 값. 서명 URL 조건과 완료 시 대조에 쓴다.
     fileName: varchar('file_name', { length: 255 }).notNull(),
@@ -168,6 +176,14 @@ export const assets = pgTable(
     sizeBytes: integer('size_bytes'),
     // sha256:<hex>. TV 미디어 캐시 key이자 승인 시 고정하는 값
     checksum: varchar('checksum', { length: 71 }),
+    // 영상만 (READY일 때 채워진다)
+    durationMs: integer('duration_ms'),
+    hasAudio: boolean('has_audio'),
+    // 영상 변환 작업. 가져갈 때 시작 시각을 적고 횟수를 올린다. 시작 시각이 오래됐으면 멈춘 것으로 보고 다시 가져간다
+    processingAttempts: integer('processing_attempts').notNull().default(0),
+    processingStartedAt: timestamp('processing_started_at', {
+      withTimezone: true,
+    }),
     // REJECTED일 때 사용자에게 보여 줄 사유
     rejectionReason: varchar('rejection_reason', { length: 255 }),
     processedAt: timestamp('processed_at', { withTimezone: true }),

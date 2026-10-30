@@ -24,6 +24,11 @@ RUN bun run build
 FROM base AS release
 ENV NODE_ENV=prod
 
+# 영상 포스터 변환(src/assets/video-processor.ts)에 쓴다.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY --from=install /temp/prod/node_modules node_modules
 COPY --from=build /app/dist dist
 COPY --from=build /app/package.json .

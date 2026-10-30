@@ -12,6 +12,8 @@ export default defineConfig({
     env: {
       NODE_ENV: 'local',
       SCHEDULER_ENABLED: 'false',
+      // 영상 업로드 흐름을 검증한다. 꺼진 경우의 형식 목록은 단위 테스트(signage-policy.spec.ts)가 본다
+      VIDEO_UPLOADS_ENABLED: 'true',
       // test/cors.e2e-spec.ts가 허용·거부를 확인한다
       CORS_ALLOWED_ORIGINS:
         'http://localhost:5173,https://stg.flyer-g.gistory.me',

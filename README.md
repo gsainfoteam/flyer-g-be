@@ -46,6 +46,8 @@ $ npm run start:prod
 
 ## Run tests
 
+영상 포스터 처리와 그 테스트에는 `ffmpeg`·`ffprobe`가 필요하다 (macOS: `brew install ffmpeg`). 배포 이미지와 CI에는 설치되어 있다.
+
 ```bash
 # unit tests
 $ npm run test

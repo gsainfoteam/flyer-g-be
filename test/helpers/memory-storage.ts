@@ -1,3 +1,4 @@
+import { readFile, writeFile } from 'node:fs/promises';
 import type { StorageService } from '../../src/storage/storage.service.js';
 
 /** e2e용 저장소. 브라우저 업로드는 upload()로 흉내 낸다. */
@@ -5,6 +6,8 @@ export class MemoryStorage implements StorageService {
   readonly objects = new Map<string, { body: Buffer; contentType: string }>();
   /** 여기 넣은 키는 삭제가 실패한다 (저장소 장애 흉내) */
   readonly failDeletes = new Set<string>();
+  /** 여기 넣은 키는 파일로 받기(downloadToFile)가 실패한다 (저장소 장애 흉내) */
+  readonly failDownloads = new Set<string>();
   /** put 직전에 부른다 (처리 도중 다른 작업이 끼어드는 상황 흉내) */
   beforePut?: (key: string) => Promise<void>;
 
@@ -36,6 +39,21 @@ export class MemoryStorage implements StorageService {
   ): Promise<void> {
     await this.beforePut?.(key);
     this.objects.set(key, { body, contentType: options.contentType });
+  }
+
+  async downloadToFile(key: string, filePath: string): Promise<void> {
+    if (this.failDownloads.has(key)) {
+      throw new Error(`simulated storage failure for ${key}`);
+    }
+    await writeFile(filePath, await this.getBytes(key));
+  }
+
+  async putFile(
+    key: string,
+    filePath: string,
+    options: { contentType: string },
+  ): Promise<void> {
+    await this.put(key, await readFile(filePath), options);
   }
 
   async delete(key: string): Promise<void> {

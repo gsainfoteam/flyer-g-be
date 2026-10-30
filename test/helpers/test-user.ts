@@ -78,6 +78,7 @@ export function uniqueSlug(prefix: string): string {
 export async function createReadyAsset(
   app: INestApplication,
   ownerId: string,
+  options: { video?: boolean } = {},
 ): Promise<string> {
   const db = app.get<Database>(DB_CONNECTION);
   const [asset] = await db
@@ -95,6 +96,16 @@ export async function createReadyAsset(
       sizeBytes: 2048,
       checksum: `sha256:${'0'.repeat(64)}`,
       processedAt: new Date(),
+      ...(options.video && {
+        kind: 'VIDEO' as const,
+        fileName: 'poster.mp4',
+        declaredMimeType: 'video/mp4',
+        mimeType: 'video/mp4',
+        width: 1920,
+        height: 1080,
+        durationMs: 15000,
+        hasAudio: true,
+      }),
     })
     .returning({ id: assets.id });
   return asset.id;
