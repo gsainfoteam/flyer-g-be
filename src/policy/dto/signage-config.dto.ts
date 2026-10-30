@@ -1,9 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ALLOWED_MIME_TYPES, type AllowedMimeType } from '../signage-policy.js';
+import { ASSET_MIME_TYPES, type AssetMimeType } from '../signage-policy.js';
 
 export class SignageConfigDto {
-  @ApiProperty({ description: '포스터 최대 용량(바이트)', example: 10485760 })
+  @ApiProperty({ description: '이미지 최대 용량(바이트)', example: 10485760 })
   maxUploadBytes: number;
+
+  @ApiProperty({ description: '영상 최대 용량(바이트)', example: 104857600 })
+  maxVideoUploadBytes: number;
+
+  @ApiProperty({ description: '영상 최대 길이(초)', example: 30 })
+  maxVideoDurationSeconds: number;
 
   @ApiProperty({
     description: '제목 최대 글자 수 (앞뒤 공백 제외)',
@@ -26,12 +32,13 @@ export class SignageConfigDto {
   minLeadTimeHours: number;
 
   @ApiProperty({
-    description: '업로드 허용 MIME',
-    enum: ALLOWED_MIME_TYPES,
+    description:
+      '지금 업로드를 받는 MIME. 영상(video/*)은 영상 업로드를 연 환경에서만 들어 있다. 들어 있지 않으면 영상 업로드 UI를 숨긴다',
+    enum: ASSET_MIME_TYPES,
     isArray: true,
-    example: ALLOWED_MIME_TYPES,
+    example: ['image/jpeg', 'image/png', 'image/webp'],
   })
-  allowedMimeTypes: AllowedMimeType[];
+  allowedMimeTypes: AssetMimeType[];
 
   @ApiProperty({
     description: '상세 링크(QR)로 허용하는 호스트. HTTPS만 허용한다',

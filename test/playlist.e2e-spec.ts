@@ -99,6 +99,7 @@ describe('편성 (e2e)', () => {
     priority?: number;
     targetGroupIds?: string[];
     title?: string;
+    assetId?: string;
   }): Promise<string> {
     const now = new Date();
     const [row] = await db
@@ -107,7 +108,7 @@ describe('편성 (e2e)', () => {
         requesterId: requester.user.id,
         title: options.title ?? `E2E ${options.status}`,
         categoryId: 'performance',
-        assetId,
+        assetId: options.assetId ?? assetId,
         detailUrl: 'https://ziggle.gistory.me/notice/1',
         startAt: options.startAt ?? at(-HOUR),
         endAt: options.endAt ?? at(HOUR),
@@ -264,6 +265,7 @@ describe('편성 (e2e)', () => {
       height: 2048,
       durationMs: null,
       assetUrl: `https://cdn.test/assets/${assetId}/tv.webp`,
+      video: null,
       detailUrl: 'https://ziggle.gistory.me/notice/1',
       startsAt: expect.any(String),
       endsAt: expect.any(String),
@@ -279,6 +281,49 @@ describe('편성 (e2e)', () => {
       layout: { type: 'SINGLE', rotationSeconds: 15 },
       serverTime: expect.any(String),
     });
+  });
+
+  it('영상 포스터는 대표 프레임(assetUrl)과 재생 정보(video)를 준다', async () => {
+    const videoAssetId = await createReadyAsset(app, requester.user.id, {
+      video: true,
+    });
+    const id = await insertSubmission({
+      status: 'PUBLISHED',
+      targetGroupIds: [group1],
+      assetId: videoAssetId,
+    });
+
+    const res = await fetchPlaylist(inGroup1).expect(200);
+    const item = res.body.items.find(
+      (i: { submissionId: string }) => i.submissionId === id,
+    );
+    expect(item).toMatchObject({
+      kind: 'VIDEO',
+      width: 1920,
+      height: 1080,
+      durationMs: 15000,
+      assetUrl: `https://cdn.test/assets/${videoAssetId}/tv.webp`,
+      video: {
+        url: `https://cdn.test/assets/${videoAssetId}/video.mp4`,
+        hasAudio: true,
+      },
+    });
+  });
+
+  it('변환 중인 영상은 뺀다', async () => {
+    const videoAssetId = await createReadyAsset(app, requester.user.id, {
+      video: true,
+    });
+    await db
+      .update(assets)
+      .set({ status: 'PROCESSING' })
+      .where(eq(assets.id, videoAssetId));
+    const id = await insertSubmission({
+      status: 'PUBLISHED',
+      targetGroupIds: [group1],
+      assetId: videoAssetId,
+    });
+    expect(await ourItemIds(inGroup1, [id])).toEqual([]);
   });
 
   describe('조건부 요청 (ETag)', () => {

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
+import { AssetsModule } from '../assets/assets.module.js';
 import { AuditModule } from '../audit/audit.module.js';
 import { CommonModule } from '../common/common.module.js';
 import { StorageModule } from '../storage/storage.module.js';
@@ -9,7 +10,13 @@ import { SchedulerService } from './scheduler.service.js';
 import { SubmissionStatusJob } from './submission-status.job.js';
 
 @Module({
-  imports: [ScheduleModule.forRoot(), AuditModule, CommonModule, StorageModule],
+  imports: [
+    ScheduleModule.forRoot(),
+    AssetsModule,
+    AuditModule,
+    CommonModule,
+    StorageModule,
+  ],
   providers: [
     SubmissionStatusJob,
     AssetCleanupJob,

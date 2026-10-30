@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, asc, eq, lt, sql } from 'drizzle-orm';
-import { uploadKey, variantKeysOf } from '../assets/assets.service.js';
+import { uploadKey, variantKeysOf } from '../assets/asset-files.js';
 import { DB_CONNECTION, type Database, type Transaction } from '../db/index.js';
 import {
   assets,
@@ -36,7 +36,7 @@ export type AssetCleanupResult = {
 /**
  * 신청에 쓰이지 않은 업로드를 정리한다 (요구사항 4절 확인 필요 8번).
  * - 업로드를 끝내지 않은 것: 행과 원본(uploads/)을 지운다. 원본에는 EXIF 위치 정보가 있을 수 있다
- * - 올렸지만 어떤 신청도 쓰지 않는 것: 행과 변형 이미지(assets/)를 지운다
+ * - 올렸지만 어떤 신청도 쓰지 않는 것: 행과 공개 파일(assets/, 영상 포함)을 지운다
  * - 거절된 것: 행만 지운다
  * 신청이 가리키는 asset은 FK 때문에 지워지지 않는다.
  *

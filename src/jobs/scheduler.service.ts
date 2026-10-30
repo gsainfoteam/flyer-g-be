@@ -2,6 +2,7 @@ import { Trace } from '@gsainfoteam/nest-observability';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { VideoProcessingService } from '../assets/video-processing.service.js';
 import { IdempotencyService } from '../common/idempotency/idempotency.service.js';
 import type { Env } from '../config/env.js';
 import { DB_CONNECTION, type Database } from '../db/index.js';
@@ -27,6 +28,7 @@ export class SchedulerService {
     private readonly assetCleanupJob: AssetCleanupJob,
     private readonly playEventAggregationJob: PlayEventAggregationJob,
     private readonly idempotencyService: IdempotencyService,
+    private readonly videoProcessing: VideoProcessingService,
   ) {
     this.enabled = config.get('SCHEDULER_ENABLED', { infer: true });
   }
@@ -48,6 +50,13 @@ export class SchedulerService {
     await this.runJob('play-event-aggregation', () =>
       this.playEventAggregationJob.run(),
     );
+  }
+
+  // 업로드한 파드가 바로 처리하므로 여기서는 남은 것만 줍는다 (파드 재시작, 일시적 실패 재시도).
+  // 파드마다 돌지만 행 단위로 가져가므로 겹치지 않는다.
+  @Cron(CronExpression.EVERY_MINUTE, { name: 'video-processing' })
+  async processVideos(): Promise<void> {
+    await this.runJob('video-processing', () => this.videoProcessing.drain());
   }
 
   @Cron(CronExpression.EVERY_HOUR, { name: 'idempotency-cleanup' })
