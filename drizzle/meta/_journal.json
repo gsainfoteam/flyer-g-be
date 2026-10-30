@@ -96,8 +96,15 @@
     {
       "idx": 13,
       "version": "7",
-      "when": 1791446754362,
-      "tag": "0013_video_assets",
+      "when": 1792243734322,
+      "tag": "0013_tv_wall_strip",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793345058243,
+      "tag": "0014_video_assets",
       "breakpoints": true
     }
   ]

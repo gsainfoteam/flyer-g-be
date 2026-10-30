@@ -56,6 +56,7 @@ export class DeviceTelemetryService {
           startedAt: new Date(event.startedAt),
           durationMs: event.durationMs,
           completed: event.completed,
+          placement: event.placement ?? null,
           receivedAt,
         })),
       )

@@ -26,7 +26,7 @@ const item = (overrides: Partial<PlaylistItemDto> = {}): PlaylistItemDto => ({
 const base = {
   items: [item()],
   deviceName: 'A동 로비 TV',
-  layout: { type: 'FOUR_GRID', rotationSeconds: 10 },
+  layout: { type: 'WALL', rotationSeconds: 10 },
   refreshAfterSeconds: 60,
 };
 
@@ -46,8 +46,8 @@ describe('playlistVersionOf', () => {
       { items: [item({ checksum: `sha256:${'b'.repeat(64)}` })] },
     ],
     ['기기 이름', { deviceName: 'A동 로비 TV (왼쪽)' }],
-    ['레이아웃', { layout: { type: 'SINGLE', rotationSeconds: 10 } }],
-    ['전환 간격', { layout: { type: 'FOUR_GRID', rotationSeconds: 20 } }],
+    ['레이아웃', { layout: { type: 'STRIP', rotationSeconds: 10 } }],
+    ['전환 간격', { layout: { type: 'WALL', rotationSeconds: 20 } }],
     ['갱신 주기', { refreshAfterSeconds: 30 }],
   ])('%s이 바뀌면 버전이 바뀐다', (_, change) => {
     expect(playlistVersionOf({ ...base, ...change })).not.toBe(

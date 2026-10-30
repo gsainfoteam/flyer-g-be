@@ -1,5 +1,5 @@
 {
-  "id": "9725bab0-bea6-42a5-be0c-dff05cbe0eff",
+  "id": "c08557b3-c361-49c5-bb37-31b0a4af4ca7",
   "prevId": "1ac17d80-d94f-4601-acf7-033dfafe84d9",
   "version": "7",
   "dialect": "postgresql",
@@ -28,14 +28,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'PENDING_UPLOAD'"
-        },
-        "kind": {
-          "name": "kind",
-          "type": "asset_kind",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'IMAGE'"
         },
         "file_name": {
           "name": "file_name",
@@ -94,31 +86,6 @@
         "checksum": {
           "name": "checksum",
           "type": "varchar(71)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "duration_ms": {
-          "name": "duration_ms",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "has_audio": {
-          "name": "has_audio",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "processing_attempts": {
-          "name": "processing_attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "processing_started_at": {
-          "name": "processing_started_at",
-          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -497,7 +464,7 @@
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "default": "'FOUR_GRID'"
+          "default": "'WALL'"
         },
         "rotation_seconds": {
           "name": "rotation_seconds",
@@ -764,6 +731,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "wall_impressions": {
+          "name": "wall_impressions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
@@ -861,6 +835,13 @@
           "type": "boolean",
           "primaryKey": false,
           "notNull": true
+        },
+        "placement": {
+          "name": "placement",
+          "type": "play_placement",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
         },
         "received_at": {
           "name": "received_at",
@@ -1628,22 +1609,13 @@
     }
   },
   "enums": {
-    "public.asset_kind": {
-      "name": "asset_kind",
-      "schema": "public",
-      "values": [
-        "IMAGE",
-        "VIDEO"
-      ]
-    },
     "public.asset_status": {
       "name": "asset_status",
       "schema": "public",
       "values": [
         "PENDING_UPLOAD",
         "READY",
-        "REJECTED",
-        "PROCESSING"
+        "REJECTED"
       ]
     },
     "public.audit_actor_type": {
@@ -1667,8 +1639,8 @@
       "name": "display_layout",
       "schema": "public",
       "values": [
-        "SINGLE",
-        "FOUR_GRID"
+        "STRIP",
+        "WALL"
       ]
     },
     "public.granted_role": {
@@ -1685,6 +1657,15 @@
       "values": [
         "IN_PROGRESS",
         "COMPLETED"
+      ]
+    },
+    "public.play_placement": {
+      "name": "play_placement",
+      "schema": "public",
+      "values": [
+        "WALL",
+        "SPOTLIGHT",
+        "STRIP"
       ]
     },
     "public.reject_reason_code": {

@@ -62,7 +62,7 @@ export class ImpressionStatsItemDto {
 
   @ApiProperty({
     description:
-      '디스플레이가 포스터를 정상 렌더링한 횟수. 사람이 본 횟수가 아니다',
+      '디스플레이가 포스터를 정상 렌더링한 횟수. 사람이 본 횟수가 아니다. 모아 보기의 크게 보기, 흐르는 띠의 가운데, 자리를 모르는 예전 노출을 센다. 벽 노출은 wallImpressions로 따로 센다',
     example: 1840,
   })
   impressions: number;
@@ -72,6 +72,13 @@ export class ImpressionStatsItemDto {
     example: 1795,
   })
   completedImpressions: number;
+
+  @ApiProperty({
+    description:
+      '모아 보기의 벽에 작게 보인 횟수. 같은 게시물이 이어서 크게 한 번 더 나오므로 impressions에 넣지 않는다',
+    example: 620,
+  })
+  wallImpressions: number;
 
   @ApiProperty({
     description: '기간 안에 한 번이라도 띄운 기기 수',

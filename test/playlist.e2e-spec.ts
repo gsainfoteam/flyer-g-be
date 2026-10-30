@@ -60,7 +60,7 @@ describe('편성 (e2e)', () => {
     assetId = await createReadyAsset(app, requester.user.id);
 
     inGroup1 = await register([group1], {
-      layout: 'SINGLE',
+      layout: 'STRIP',
       rotationSeconds: 15,
     });
     inGroup2 = await register([group2]);
@@ -278,7 +278,7 @@ describe('편성 (e2e)', () => {
     expect(res.body).toMatchObject({
       deviceName: 'E2E 편성 TV',
       refreshAfterSeconds: 60,
-      layout: { type: 'SINGLE', rotationSeconds: 15 },
+      layout: { type: 'STRIP', rotationSeconds: 15 },
       serverTime: expect.any(String),
     });
   });
