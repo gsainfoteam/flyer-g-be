@@ -71,12 +71,12 @@ export class ReviewsController {
   @ApiOperation({
     summary: '검토 대기열',
     description:
-      '오래 기다린 순(검토 요청 시각 오름차순). 대기 시간은 각 항목의 `submittedAt`과 응답의 `serverTime`으로 계산한다.',
+      '오래 기다린 순(검토 요청 시각 오름차순). `type`으로 종류를 거를 수 있다. 대기 시간은 각 항목의 `submittedAt`과 응답의 `serverTime`으로 계산한다.',
   })
   @ApiPageResponse(SubmissionDto)
   @ApiForbiddenResponse(REVIEWER_ONLY)
   @ApiUnprocessableEntityResponse({
-    description: '알 수 없는 상태, 잘못된 limit',
+    description: '알 수 없는 상태·종류, 잘못된 limit',
     type: ErrorResponseDto,
   })
   queue(@Query() query: ReviewQueueQueryDto): Promise<Page<SubmissionDto>> {

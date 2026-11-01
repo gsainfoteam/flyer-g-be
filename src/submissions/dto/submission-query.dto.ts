@@ -1,3 +1,4 @@
+import { applyDecorators } from '@nestjs/common';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
@@ -7,6 +8,7 @@ import {
   IsOptional,
   IsString,
 } from 'class-validator';
+import { CommaSeparated } from '../../common/dto/comma-separated.js';
 import {
   CursorField,
   CursorQueryDto,
@@ -14,11 +16,31 @@ import {
 } from '../../common/pagination/cursor-query.dto.js';
 import {
   submissionStatusEnum,
+  submissionTypeEnum,
   type SubmissionStatus,
+  type SubmissionType,
 } from '../../db/schema.js';
 
 export const SUBMISSION_SCOPES = ['me', 'all'] as const;
 export type SubmissionScope = (typeof SUBMISSION_SCOPES)[number];
+
+/** 목록·검토 대기열에 같이 쓰는 `type` 쿼리 */
+function TypeFilter(): PropertyDecorator {
+  return applyDecorators(
+    ApiPropertyOptional({
+      description: `신청 종류 복수 필터 (쉼표 구분). 비우면 모든 종류. 값: ${submissionTypeEnum.enumValues.join(', ')}`,
+      example: 'POSTER',
+      type: String,
+    }),
+    CommaSeparated(),
+    IsOptional(),
+    IsArray(),
+    IsIn(submissionTypeEnum.enumValues, {
+      each: true,
+      message: '알 수 없는 신청 종류가 있습니다.',
+    }),
+  );
+}
 
 const SCOPE_DESCRIPTION =
   'me: 내 신청. all: 전체 신청 (REVIEWER·SUPER_ADMIN만, 아니면 403)';
@@ -41,11 +63,7 @@ export class ListSubmissionsQueryDto extends CursorQueryDto {
     example: 'APPROVED,SCHEDULED',
     type: String,
   })
-  @Transform(({ value }) =>
-    typeof value === 'string' && value !== ''
-      ? value.split(',').map((status) => status.trim())
-      : undefined,
-  )
+  @CommaSeparated()
   @IsOptional()
   @IsArray()
   @IsIn(submissionStatusEnum.enumValues, {
@@ -53,6 +71,9 @@ export class ListSubmissionsQueryDto extends CursorQueryDto {
     message: '알 수 없는 상태가 있습니다.',
   })
   statuses?: SubmissionStatus[];
+
+  @TypeFilter()
+  type?: SubmissionType[];
 }
 
 export class SubmissionSummaryQueryDto {
@@ -91,6 +112,9 @@ export class ReviewQueueQueryDto {
   @IsString()
   @IsNotEmpty()
   categoryId?: string;
+
+  @TypeFilter()
+  type?: SubmissionType[];
 
   @CursorField()
   cursor?: string;

@@ -10,6 +10,7 @@ import {
 import { ErrorResponseDto } from '../common/dto/error-response.dto.js';
 import type { Env } from '../config/env.js';
 import { BEARER_AUTH } from '../config/swagger.js';
+import { dailySubmissionLimits } from '../submissions/kinds/index.js';
 import { SignageConfigDto } from './dto/signage-config.dto.js';
 import { allowedMimeTypes, SIGNAGE_POLICY } from './signage-policy.js';
 
@@ -39,6 +40,8 @@ export class PolicyController {
   getConfig(): SignageConfigDto {
     return {
       ...SIGNAGE_POLICY,
+      minLeadTimeHours: 0,
+      dailySubmissionLimits: dailySubmissionLimits(),
       allowedMimeTypes: allowedMimeTypes(this.videoUploadsEnabled),
       allowedDetailUrlHosts: [...SIGNAGE_POLICY.allowedDetailUrlHosts],
     };

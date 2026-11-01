@@ -1,5 +1,4 @@
 import type { FieldErrors } from '../common/errors/app.exception.js';
-import { addMonthsInSeoul } from '../common/time/seoul-time.js';
 import type { SubmissionStatus } from '../db/schema.js';
 import { SIGNAGE_POLICY } from '../policy/signage-policy.js';
 
@@ -46,30 +45,20 @@ export function parseDetailUrl(
 }
 
 /**
- * 게시 기간 규칙. 검토 대기에 들어갈 때(생성·재제출)와 기간을 바꿀 때 검사한다.
- * 기준 시각은 항상 서버 시각이다.
+ * 모든 종류에 공통인 기간 규칙. 종류별 규칙(최대 길이 등)은 kinds/의 validateSchedule이 더한다.
+ * 시작 시각은 제한하지 않는다. 이미 지났으면 승인하는 즉시 게시된다.
  */
-export function validateSchedule(
+export function validatePeriod(
   startAt: Date,
   endAt: Date,
   now: Date,
 ): FieldErrors {
   const errors: FieldErrors = {};
-  const { minLeadTimeHours, maxPublishMonths } = SIGNAGE_POLICY;
-
-  const earliestStart = new Date(now.getTime() + minLeadTimeHours * 3600_000);
-  if (startAt < earliestStart) {
-    errors.startAt = `게시 시작은 신청 시각으로부터 ${minLeadTimeHours}시간 이후여야 합니다.`;
-  }
-
   if (endAt <= startAt) {
     errors.endAt = '종료 시각은 시작 시각보다 뒤여야 합니다.';
   } else if (endAt <= now) {
     errors.endAt = '종료 시각이 이미 지났습니다.';
-  } else if (endAt > addMonthsInSeoul(startAt, maxPublishMonths)) {
-    errors.endAt = `게시 기간은 최대 ${maxPublishMonths}개월입니다.`;
   }
-
   return errors;
 }
 

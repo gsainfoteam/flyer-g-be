@@ -75,6 +75,8 @@ export class PlaylistService {
       )
       .where(
         and(
+          // 이 응답(v1)은 포스터만 안다. 다른 종류는 편성 응답 v2에 실린다
+          eq(submissions.type, 'POSTER'),
           inArray(submissions.status, ['APPROVED', 'SCHEDULED', 'PUBLISHED']),
           lte(submissions.startAt, now),
           gt(submissions.endAt, now),

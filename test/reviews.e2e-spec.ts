@@ -165,6 +165,22 @@ describe('검토와 승인 (e2e)', () => {
 
       expect(second.body.items[0].id).not.toBe(first.body.items[0].id);
     });
+
+    it('종류 필터, 모르는 종류는 422', async () => {
+      const poster = await submission({ categoryId: 'club' });
+      const res = await get(
+        '/signage/reviews?type=POSTER&categoryId=club&limit=100',
+        reviewer,
+      ).expect(200);
+      expect(res.body.items.map((s: { id: string }) => s.id)).toContain(
+        poster.id,
+      );
+      expect(
+        res.body.items.every((s: { type: string }) => s.type === 'POSTER'),
+      ).toBe(true);
+
+      await get('/signage/reviews?type=NOPE', reviewer).expect(422);
+    });
   });
 
   describe('승인', () => {
@@ -383,7 +399,7 @@ describe('검토와 승인 (e2e)', () => {
       expect(log.metadata).toEqual({ fromStatus: 'SUSPENDED' });
     });
 
-    it('기간이 이미 시작된 중단 건은 기간을 고쳐야 다시 낼 수 있다', async () => {
+    it('기간이 이미 시작된 중단 건도 그대로 다시 낼 수 있다', async () => {
       const { id } = await submission();
       await approve(id, 1).expect(200);
       await suspend(id, { reason: '중단' }).expect(200);
@@ -397,8 +413,28 @@ describe('검토와 승인 (e2e)', () => {
         .set('Authorization', requester.authHeader)
         .set('Idempotency-Key', randomUUID())
         .send({ version: 3 })
+        .expect(200);
+      expect(res.body.status).toBe('PENDING_REVIEW');
+    });
+
+    it('기간이 끝난 중단 건은 기간을 고쳐야 다시 낼 수 있다', async () => {
+      const { id } = await submission();
+      await approve(id, 1).expect(200);
+      await suspend(id, { reason: '중단' }).expect(200);
+      await setRow(id, {
+        startAt: new Date(Date.now() - 48 * HOUR),
+        endAt: new Date(Date.now() - HOUR),
+      });
+
+      const res = await request(server())
+        .post(`/signage/submissions/${id}/submit`)
+        .set('Authorization', requester.authHeader)
+        .set('Idempotency-Key', randomUUID())
+        .send({ version: 3 })
         .expect(422);
-      expect(res.body.fields).toHaveProperty('startAt');
+      expect(res.body.fields).toEqual({
+        endAt: '종료 시각이 이미 지났습니다.',
+      });
     });
   });
 
