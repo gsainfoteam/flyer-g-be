@@ -54,10 +54,14 @@ export class ReviewsService {
       throw conflict('Publish period has already ended');
     }
     // 신청은 READY asset만 가리킬 수 있지만, 승인 시점의 미디어를 한 번 더 확인하고 checksum을 고정한다.
-    const asset = await this.assetsService.findById(current.assetId);
-    if (asset?.status !== 'READY' || !asset.checksum) {
-      throw conflict('Poster is not available');
+    // 미디어가 없는 신청(사진 없는 템플릿 이벤트 배너 등)은 고정할 것이 없다.
+    const asset = current.assetId
+      ? await this.assetsService.findById(current.assetId)
+      : null;
+    if (current.assetId && (asset?.status !== 'READY' || !asset.checksum)) {
+      throw conflict('Media is not available');
     }
+    const assetChecksum = asset?.checksum ?? null;
 
     const status = current.startAt <= now ? 'PUBLISHED' : 'SCHEDULED';
     await this.db.transaction(async (tx) => {
@@ -67,7 +71,7 @@ export class ReviewsService {
         revision: current.version,
         decision: 'APPROVED',
         reviewerId: reviewer.id,
-        assetChecksum: asset.checksum,
+        assetChecksum,
         reviewedAt: now,
       });
       await this.auditService.record(tx, {
@@ -77,7 +81,7 @@ export class ReviewsService {
         metadata: {
           revision: current.version,
           toStatus: status,
-          assetChecksum: asset.checksum,
+          assetChecksum,
         },
         at: now,
       });

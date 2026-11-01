@@ -36,6 +36,27 @@ describe('toErrorResponse', () => {
       REQUEST_ID,
     );
     expect(body).not.toHaveProperty('fields');
+    expect(body).not.toHaveProperty('details');
+  });
+
+  it('details가 있으면 그대로 싣는다', () => {
+    const { status, body } = toErrorResponse(
+      new AppException(
+        HttpStatus.TOO_MANY_REQUESTS,
+        ErrorCode.DAILY_LIMIT_EXCEEDED,
+        'Daily limit exceeded',
+        undefined,
+        { type: 'EVENT_BANNER', limit: 3 },
+      ),
+      REQUEST_ID,
+    );
+    expect(status).toBe(429);
+    expect(body).toEqual({
+      code: 'DAILY_LIMIT_EXCEEDED',
+      message: 'Daily limit exceeded',
+      requestId: REQUEST_ID,
+      details: { type: 'EVENT_BANNER', limit: 3 },
+    });
   });
 
   it.each([

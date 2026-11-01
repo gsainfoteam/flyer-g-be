@@ -19,6 +19,7 @@ import {
   ApiOperation,
   ApiParam,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
@@ -60,7 +61,7 @@ const NOT_FOUND_DOC = {
 };
 const VALIDATION_DOC = {
   description:
-    '입력 검증 실패 (VALIDATION_FAILED). fields에 필드별 문구: 제목, 카테고리, 포스터(assetId), 기간(startAt·endAt), 상세 링크, 대상 위치',
+    '입력 검증 실패 (VALIDATION_FAILED). fields에 필드별 문구: 제목, 카테고리, 포스터(assetId), 기간(startAt·endAt), 상세 링크, 대상 위치, 이벤트 배너(eventBanner.recipient 등), 그 종류가 받지 않는 필드',
   type: ErrorResponseDto,
 };
 
@@ -75,14 +76,24 @@ export class SubmissionsController {
   @Idempotent()
   @ApiOperation({
     summary: '게시 신청',
-    description: `신청을 만들고 바로 검토를 요청한다 (\`status: PENDING_REVIEW\`).
+    description: `신청을 만들고 바로 검토를 요청한다 (\`status: PENDING_REVIEW\`). 종류(\`type\`)마다 받는 필드가 다르고, 그 종류가 받지 않는 필드를 보내면 422다.
 
-**검증** (기준은 \`GET /signage/config\`)
+**공통** (기준은 \`GET /signage/config\`)
+- 기간: 종료는 시작보다 뒤이고 아직 지나지 않아야 한다. 시작 시각은 제한하지 않는다. 이미 지났으면 승인하는 즉시 게시된다
+- 대상 위치(선택): 숨기지 않은 그룹. 비우면 전체 기기
+- 하루 한도: \`dailySubmissionLimits\`에 있는 종류는 사용자당 서울 하루 생성 건수를 센다(취소·반려 포함). 넘으면 429 \`DAILY_LIMIT_EXCEEDED\`
+
+**POSTER** (\`type\`을 비우면 포스터)
 - 제목: 앞뒤 공백 제거 후 1~80자
 - 포스터: 본인이 올려 complete까지 끝낸 asset
-- 기간: 종료는 시작보다 뒤이고 아직 지나지 않아야 한다. 최대 3개월(서울 달력). 시작 시각은 제한하지 않는다. 이미 지났으면 승인하는 즉시 게시된다
+- 기간: 최대 3개월(서울 달력)
 - 상세 링크(선택): 허용된 호스트의 HTTPS. Ziggle 공지 주소(\`/notice/{id}\`)면 공지 ID를 뽑아 **공지 하나에 신청 하나**를 지킨다. 끝난 신청(취소·종료·보관)은 세지 않는다
-- 대상 위치(선택): 숨기지 않은 그룹. 비우면 전체 기기`,
+
+**EVENT_BANNER** (\`eventBanner\`만 받는다. 제목은 서버가 "생일 · 지민에게"처럼 만든다)
+- 기간: 시작·종료 모두 서울 자정(00:00), 1~\`eventBannerMaxDays\`일. 당일 신청도 된다
+- TEMPLATE: \`occasion\`·\`recipient\`·\`message\` 필수. 사진(\`photoAssetId\`)은 선택이고, 있으면 \`photoConsent: true\` 필수. \`assetId\`는 쓸 수 없다
+- IMAGE: \`assetId\`(본인 이미지, 영상 불가)와 \`recipient\` 필수. \`photoAssetId\`는 쓸 수 없다
+- 하루 3건`,
   })
   @ApiCreatedResponse({ type: SubmissionDetailDto })
   @ApiConflictResponse({
@@ -91,6 +102,11 @@ export class SubmissionsController {
     type: ErrorResponseDto,
   })
   @ApiUnprocessableEntityResponse(VALIDATION_DOC)
+  @ApiTooManyRequestsResponse({
+    description:
+      '그 종류의 하루 한도를 넘음 (DAILY_LIMIT_EXCEEDED, details: { type, limit })',
+    type: ErrorResponseDto,
+  })
   create(
     @CurrentUser() user: AuthUser,
     @Body() dto: CreateSubmissionDto,
@@ -156,7 +172,7 @@ export class SubmissionsController {
   @Patch(':id')
   @ApiOperation({
     summary: '신청 수정',
-    description: `신청자 본인만 고친다. 보낸 필드 중 값이 실제로 바뀐 것만 반영한다. 선택 입력(상세 링크, 주최, 부제, 장소, 설명)은 null이나 빈 문자열이면 비운다.
+    description: `신청자 본인만 고친다. 보낸 필드 중 값이 실제로 바뀐 것만 반영한다. 종류는 바꿀 수 없고, 그 종류가 받지 않는 필드를 보내면 422다. 포스터의 선택 입력(상세 링크, 주최, 부제, 장소, 설명)은 null이나 빈 문자열이면 비운다. 이벤트 배너는 \`eventBanner\`를 통째로 보낸다(빠진 선택 필드는 비운다).
 
 | 현재 상태 | 수정 후 상태 |
 |---|---|

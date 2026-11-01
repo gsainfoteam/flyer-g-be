@@ -6,6 +6,7 @@ import {
   count,
   desc,
   eq,
+  gte,
   inArray,
   ne,
   sql,
@@ -25,6 +26,7 @@ import { ErrorCode } from '../common/errors/error-code.js';
 import { validationFailed } from '../common/errors/validation.js';
 import { decodeCursor } from '../common/pagination/cursor.js';
 import { toPage, type Page } from '../common/pagination/page.js';
+import { seoulDate, startOfSeoulDay } from '../common/time/seoul-time.js';
 import { violatesUnique } from '../db/errors.js';
 import { DB_CONNECTION, type Database, type Transaction } from '../db/index.js';
 import {
@@ -58,27 +60,40 @@ import type {
   SubmissionSummaryDto,
   SubmissionTypeSummaryDto,
 } from './dto/submission.dto.js';
-import { kindOf } from './kinds/index.js';
+import {
+  KIND_INPUT_FIELDS,
+  kindOf,
+  type SubmissionKind,
+} from './kinds/index.js';
+import type {
+  KindColumns,
+  KindContext,
+  KindInput,
+} from './kinds/submission-kind.js';
 import {
   canCancel,
   EDITABLE_STATUSES,
   hasStartedPublishing,
-  parseDetailUrl,
   REAPPROVAL_STATUSES,
   SUBMITTABLE_STATUSES,
 } from './submission-rules.js';
 
 export type SubmissionRow = Submission & {
-  categoryName: string;
+  categoryName: string | null;
   requesterName: string;
-  posterKind: Asset['kind'];
-  posterWidth: number | null;
-  posterHeight: number | null;
-  posterDurationMs: number | null;
+  /** 주 미디어(submissions.asset_id)의 정보. 없으면 null */
+  assetKind: Asset['kind'] | null;
+  assetWidth: number | null;
+  assetHeight: number | null;
+  assetDurationMs: number | null;
   lastDecision: ReviewDecision | null;
 };
 
 const ACTIVE_NOTICE_INDEX = 'submissions_ziggle_notice_id_active_uq';
+
+// Postgres advisory lock 번호. 마이그레이션(src/db/index.ts)·주기 작업(src/jobs/job-lock.ts) 잠금과 겹치지 않는 값이다.
+const DAILY_LIMIT_LOCK_NAMESPACE = 1179207271;
+
 const cursorSchema = z.tuple([z.iso.datetime(), z.uuid()]);
 
 /** 검토 대기열 정렬 기준. 모든 신청은 만들 때 submittedAt이 채워지지만 안전하게 createdAt으로 보완한다. */
@@ -122,16 +137,16 @@ function selectSubmissionRows(db: Database, where: SQL | undefined) {
       updatedAt: submissions.updatedAt,
       categoryName: categories.name,
       requesterName: users.name,
-      posterKind: assets.kind,
-      posterWidth: assets.width,
-      posterHeight: assets.height,
-      posterDurationMs: assets.durationMs,
+      assetKind: assets.kind,
+      assetWidth: assets.width,
+      assetHeight: assets.height,
+      assetDurationMs: assets.durationMs,
       lastDecision,
     })
     .from(submissions)
-    .innerJoin(categories, eq(categories.id, submissions.categoryId))
+    .leftJoin(categories, eq(categories.id, submissions.categoryId))
     .innerJoin(users, eq(users.id, submissions.requesterId))
-    .innerJoin(assets, eq(assets.id, submissions.assetId))
+    .leftJoin(assets, eq(assets.id, submissions.assetId))
     .where(where)
     .$dynamic();
 }
@@ -158,43 +173,39 @@ export class SubmissionsService {
     const endAt = new Date(dto.endAt);
     const targetGroupIds = dto.targetGroupIds ?? [];
 
+    const resolved = await kind.resolve(
+      kindInputOf(dto),
+      null,
+      this.kindContext(user),
+    );
     const errors: FieldErrors = {
+      ...unacceptedFields(kind, dto),
       ...kind.validateSchedule(startAt, endAt, now),
-      ...(await this.validateReferences(user.id, {
-        categoryId: dto.categoryId,
-        assetId: dto.assetId,
-        targetGroupIds,
-      })),
+      ...resolved.errors,
+      ...(await this.validateTargetGroups(targetGroupIds)),
     };
-    const detail = this.parseDetail(dto.detailUrl, errors);
     if (Object.keys(errors).length > 0) {
       throw validationFailed(errors);
     }
 
     const id = await this.withNoticeGuard(() =>
       this.db.transaction(async (tx) => {
+        await this.assertDailyLimit(tx, user, kind, now);
         const [row] = await tx
           .insert(submissions)
           .values({
             type: kind.type,
             requesterId: user.id,
-            ziggleNoticeId: detail?.ziggleNoticeId ?? null,
-            title: dto.title,
-            categoryId: dto.categoryId,
-            assetId: dto.assetId,
-            detailUrl: detail?.url ?? null,
+            ...resolved.columns,
             startAt,
             endAt,
             status: 'PENDING_REVIEW',
-            organizerName: dto.organizerName ?? null,
-            subtitle: dto.subtitle ?? null,
-            location: dto.location ?? null,
-            description: dto.description ?? null,
             submittedAt: now,
             createdAt: now,
             updatedAt: now,
           })
           .returning({ id: submissions.id });
+        await kind.details?.save(tx, row.id, resolved.detail);
         if (targetGroupIds.length > 0) {
           await tx.insert(submissionTargetGroups).values(
             targetGroupIds.map((targetGroupId) => ({
@@ -247,14 +258,18 @@ export class SubmissionsService {
         .limit(query.limit + 1),
       this.db.select({ total: count() }).from(submissions).where(filter),
     ]);
-    const groupIds = await this.targetGroupIdsOf(rows.map((row) => row.id));
+    const [groupIds, details] = await Promise.all([
+      this.targetGroupIdsOf(rows.map((row) => row.id)),
+      this.detailsOf(rows),
+    ]);
 
     return toPage(rows, {
       limit: query.limit,
       totalCount: total,
       serverTime: now,
       cursorOf: (row) => [row.createdAt.toISOString(), row.id],
-      map: (row) => this.toDto(row, groupIds.get(row.id) ?? []),
+      map: (row) =>
+        this.toDto(row, groupIds.get(row.id) ?? [], details.get(row.id)),
     });
   }
 
@@ -365,39 +380,40 @@ export class SubmissionsService {
       throw conflict(`Submission in ${current.status} cannot be edited`);
     }
 
-    const errors: FieldErrors = {};
-    const changes: Partial<typeof submissions.$inferInsert> = {};
-    const setIfChanged = <K extends keyof Submission>(
-      key: K,
-      value: Submission[K] | undefined,
-    ) => {
-      if (value !== undefined && !sameValue(value, current[key])) {
-        (changes as Record<string, unknown>)[key] = value;
-      }
+    const kind = kindOf(current.type);
+    const currentDetail = (await this.detailsOf([current])).get(id) ?? null;
+    const resolved = await kind.resolve(
+      kindInputOf(dto),
+      { columns: kindColumnsOf(current), detail: currentDetail },
+      this.kindContext(user),
+    );
+    const errors: FieldErrors = {
+      ...unacceptedFields(kind, dto),
+      ...resolved.errors,
     };
 
-    setIfChanged('title', dto.title);
-    setIfChanged('categoryId', dto.categoryId);
-    setIfChanged('assetId', dto.assetId);
-    setIfChanged('organizerName', dto.organizerName);
-    setIfChanged('subtitle', dto.subtitle);
-    setIfChanged('location', dto.location);
-    setIfChanged('description', dto.description);
-    setIfChanged('startAt', dto.startAt ? new Date(dto.startAt) : undefined);
-    setIfChanged('endAt', dto.endAt ? new Date(dto.endAt) : undefined);
-    if (dto.detailUrl !== undefined) {
-      const detail =
-        dto.detailUrl === null ? null : this.parseDetail(dto.detailUrl, errors);
-      setIfChanged('detailUrl', detail?.url ?? null);
-      setIfChanged('ziggleNoticeId', detail?.ziggleNoticeId ?? null);
+    const changes: Partial<typeof submissions.$inferInsert> = {};
+    const next: Partial<Submission> = {
+      ...resolved.columns,
+      startAt: dto.startAt ? new Date(dto.startAt) : undefined,
+      endAt: dto.endAt ? new Date(dto.endAt) : undefined,
+    };
+    for (const [key, value] of Object.entries(next)) {
+      const field = key as keyof Submission;
+      if (value !== undefined && !sameValue(value, current[field])) {
+        (changes as Record<string, unknown>)[field] = value;
+      }
     }
+    const detailChanged =
+      kind.details !== null &&
+      !kind.details.equals(currentDetail, resolved.detail);
 
     const currentGroups = (await this.targetGroupIdsOf([id])).get(id) ?? [];
     const groupsChanged =
       dto.targetGroupIds !== undefined &&
       !sameSet(dto.targetGroupIds, currentGroups);
 
-    if (Object.keys(changes).length === 0 && !groupsChanged) {
+    if (Object.keys(changes).length === 0 && !detailChanged && !groupsChanged) {
       if (Object.keys(errors).length > 0) {
         throw validationFailed(errors);
       }
@@ -409,24 +425,22 @@ export class SubmissionsService {
     if (changes.startAt || changes.endAt || needsReapproval) {
       Object.assign(
         errors,
-        kindOf(current.type).validateSchedule(
+        kind.validateSchedule(
           changes.startAt ?? current.startAt,
           changes.endAt ?? current.endAt,
           now,
         ),
       );
     }
-    Object.assign(
-      errors,
-      await this.validateReferences(user.id, {
-        categoryId: changes.categoryId,
-        assetId: changes.assetId,
-        // 이미 연결된 숨긴 그룹은 그대로 둘 수 있다. 새로 추가하는 그룹만 확인한다.
-        targetGroupIds: groupsChanged
-          ? dto.targetGroupIds!.filter((id) => !currentGroups.includes(id))
-          : undefined,
-      }),
-    );
+    if (groupsChanged) {
+      // 이미 연결된 숨긴 그룹은 그대로 둘 수 있다. 새로 추가하는 그룹만 확인한다.
+      Object.assign(
+        errors,
+        await this.validateTargetGroups(
+          dto.targetGroupIds!.filter((id) => !currentGroups.includes(id)),
+        ),
+      );
+    }
     if (Object.keys(errors).length > 0) {
       throw validationFailed(errors);
     }
@@ -452,6 +466,9 @@ export class SubmissionsService {
         if (!updated) {
           throw conflict('Submission was modified');
         }
+        if (detailChanged) {
+          await kind.details!.save(tx, id, resolved.detail);
+        }
         if (groupsChanged) {
           await tx
             .delete(submissionTargetGroups)
@@ -472,6 +489,7 @@ export class SubmissionsService {
           metadata: {
             changedFields: [
               ...Object.keys(changes),
+              ...(detailChanged ? kind.inputFields : []),
               ...(groupsChanged ? ['targetGroupIds'] : []),
             ],
             fromStatus: current.status,
@@ -575,7 +593,10 @@ export class SubmissionsService {
         .limit(query.limit + 1),
       this.db.select({ total: count() }).from(submissions).where(filter),
     ]);
-    const groupIds = await this.targetGroupIdsOf(rows.map((row) => row.id));
+    const [groupIds, details] = await Promise.all([
+      this.targetGroupIdsOf(rows.map((row) => row.id)),
+      this.detailsOf(rows),
+    ]);
 
     return toPage(rows, {
       limit: query.limit,
@@ -585,7 +606,8 @@ export class SubmissionsService {
         (row.submittedAt ?? row.createdAt).toISOString(),
         row.id,
       ],
-      map: (row) => this.toDto(row, groupIds.get(row.id) ?? []),
+      map: (row) =>
+        this.toDto(row, groupIds.get(row.id) ?? [], details.get(row.id)),
     });
   }
 
@@ -663,43 +685,51 @@ export class SubmissionsService {
     if (!row) {
       throw notFound();
     }
-    const groups = (await this.targetGroupIdsOf([id])).get(id) ?? [];
-    return { ...this.toDto(row, groups), serverTime: now.toISOString() };
+    const [groups, details] = await Promise.all([
+      this.targetGroupIdsOf([id]),
+      this.detailsOf([row]),
+    ]);
+    return {
+      ...this.toDto(row, groups.get(id) ?? [], details.get(id)),
+      serverTime: now.toISOString(),
+    };
   }
 
-  private toDto(row: SubmissionRow, targetGroupIds: string[]): SubmissionDto {
-    const poster = this.assetsService.variantUrls(row.assetId);
+  /** 종류별 상세 테이블을 종류마다 한 번씩 읽는다. 상세가 없는 종류는 비어 있다 */
+  private async detailsOf(
+    rows: Pick<SubmissionRow, 'id' | 'type'>[],
+  ): Promise<Map<string, unknown>> {
+    const idsByType = new Map<SubmissionType, string[]>();
+    for (const row of rows) {
+      idsByType.set(row.type, [...(idsByType.get(row.type) ?? []), row.id]);
+    }
+    const maps = await Promise.all(
+      [...idsByType].map(
+        ([type, ids]) =>
+          kindOf(type).details?.load(this.db, ids) ??
+          Promise.resolve(new Map<string, unknown>()),
+      ),
+    );
+    return new Map(maps.flatMap((map) => [...map]));
+  }
+
+  private toDto(
+    row: SubmissionRow,
+    targetGroupIds: string[],
+    detail: unknown,
+  ): SubmissionDto {
     return {
       id: row.id,
-      ziggleNoticeId: row.ziggleNoticeId,
       requesterId: row.requesterId,
       requesterName: row.requesterName,
       type: row.type,
       title: row.title,
-      categoryId: row.categoryId,
-      categoryName: row.categoryName,
-      assetId: row.assetId,
-      posterUrl: poster.preview,
-      posterThumbUrl: poster.thumb,
-      posterKind: row.posterKind,
-      // 신청은 READY asset만 가리킬 수 있어 크기가 항상 있다
-      posterWidth: row.posterWidth!,
-      posterHeight: row.posterHeight!,
-      posterDurationMs: row.posterDurationMs,
-      posterVideoUrl: this.assetsService.videoUrl({
-        id: row.assetId,
-        kind: row.posterKind,
-      }),
-      detailUrl: row.detailUrl,
+      ...kindOf(row.type).toResponse(row, detail ?? null, this.assetsService),
       startAt: row.startAt.toISOString(),
       endAt: row.endAt.toISOString(),
       status: row.status,
       priority: row.priority,
       targetGroupIds,
-      organizerName: row.organizerName,
-      subtitle: row.subtitle,
-      location: row.location,
-      description: row.description,
       version: row.version,
       lastDecision: row.lastDecision,
       submittedAt: row.submittedAt?.toISOString() ?? null,
@@ -708,51 +738,64 @@ export class SubmissionsService {
     };
   }
 
-  /** 입력으로 들어온 참조가 쓸 수 있는 값인지. undefined인 항목은 검사하지 않는다. */
-  private async validateReferences(
-    ownerId: string,
-    refs: { categoryId?: string; assetId?: string; targetGroupIds?: string[] },
-  ): Promise<FieldErrors> {
-    const errors: FieldErrors = {};
-    const [categoryOk, asset, unavailableGroups] = await Promise.all([
-      refs.categoryId === undefined
-        ? true
-        : this.categoriesService.isActive(refs.categoryId),
-      refs.assetId === undefined
-        ? undefined
-        : this.assetsService.findOwnedOrNull(ownerId, refs.assetId),
-      refs.targetGroupIds === undefined
-        ? []
-        : this.targetGroupsService.findUnavailable(refs.targetGroupIds),
-    ]);
-
-    if (!categoryOk) {
-      errors.categoryId = '선택할 수 없는 카테고리입니다.';
-    }
-    if (refs.assetId !== undefined && asset?.status !== 'READY') {
-      errors.assetId =
-        asset?.status === 'PENDING_UPLOAD'
-          ? '포스터 업로드가 끝나지 않았습니다.'
-          : asset?.status === 'PROCESSING'
-            ? '영상 변환이 끝나지 않았습니다. 잠시 후 다시 시도해주세요.'
-            : '포스터를 다시 올려주세요.';
-    }
-    if (unavailableGroups.length > 0) {
-      errors.targetGroupIds = `선택할 수 없는 대상 위치가 있습니다: ${unavailableGroups.join(', ')}`;
-    }
-    return errors;
+  /** 종류 정의가 쓰는 조회. 정의가 DB와 서비스를 직접 알지 않게 한다 */
+  private kindContext(user: AuthUser): KindContext {
+    return {
+      findOwnedAsset: (assetId) =>
+        this.assetsService.findOwnedOrNull(user.id, assetId),
+      isActiveCategory: (categoryId) =>
+        this.categoriesService.isActive(categoryId),
+    };
   }
 
-  private parseDetail(raw: string | null | undefined, errors: FieldErrors) {
-    if (!raw) {
-      return null;
+  private async validateTargetGroups(ids: string[]): Promise<FieldErrors> {
+    if (ids.length === 0) {
+      return {};
     }
-    const parsed = parseDetailUrl(raw);
-    if ('error' in parsed) {
-      errors.detailUrl = parsed.error;
-      return null;
+    const unavailable = await this.targetGroupsService.findUnavailable(ids);
+    return unavailable.length > 0
+      ? {
+          targetGroupIds: `선택할 수 없는 대상 위치가 있습니다: ${unavailable.join(', ')}`,
+        }
+      : {};
+  }
+
+  /**
+   * 사용자당 서울 하루 생성 한도. 같은 사용자·종류의 생성을 잠금으로 줄 세운 뒤 세므로
+   * 동시에 보내도 한도를 넘지 못한다. 취소·반려된 신청도 센다(만들고 지우기로 한도를 피하지 못하게).
+   */
+  private async assertDailyLimit(
+    tx: Transaction,
+    user: AuthUser,
+    kind: SubmissionKind,
+    now: Date,
+  ): Promise<void> {
+    const limit = kind.dailyLimit;
+    if (limit === null) {
+      return;
     }
-    return parsed;
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(${DAILY_LIMIT_LOCK_NAMESPACE}::int, hashtext(${`${user.id}:${kind.type}`}))`,
+    );
+    const [{ total }] = await tx
+      .select({ total: count() })
+      .from(submissions)
+      .where(
+        and(
+          eq(submissions.requesterId, user.id),
+          eq(submissions.type, kind.type),
+          gte(submissions.createdAt, startOfSeoulDay(seoulDate(now))),
+        ),
+      );
+    if (total >= limit) {
+      throw new AppException(
+        HttpStatus.TOO_MANY_REQUESTS,
+        ErrorCode.DAILY_LIMIT_EXCEEDED,
+        `Daily ${kind.type} limit exceeded`,
+        undefined,
+        { type: kind.type, limit },
+      );
+    }
   }
 
   /** 같은 공지로 동시에 신청해도 DB unique 제약이 하나만 통과시킨다. 그 위반을 409로 바꾼다. */
@@ -785,6 +828,43 @@ export class SubmissionsService {
   private scopeCondition(user: AuthUser, scope: SubmissionScope) {
     return scope === 'me' ? eq(submissions.requesterId, user.id) : undefined;
   }
+}
+
+/** 입력 중 종류마다 다른 부분 */
+function kindInputOf(
+  dto: CreateSubmissionDto | UpdateSubmissionDto,
+): KindInput {
+  return Object.fromEntries(
+    KIND_INPUT_FIELDS.map((field) => [field, dto[field]]),
+  ) as KindInput;
+}
+
+/** 그 종류가 받지 않는 필드를 보냈으면 필드마다 오류. null은 보내지 않은 것으로 본다 */
+function unacceptedFields(
+  kind: SubmissionKind,
+  dto: CreateSubmissionDto | UpdateSubmissionDto,
+): FieldErrors {
+  const errors: FieldErrors = {};
+  for (const field of KIND_INPUT_FIELDS) {
+    if (dto[field] != null && !kind.inputFields.includes(field)) {
+      errors[field] = '이 종류의 신청에는 쓸 수 없는 항목입니다.';
+    }
+  }
+  return errors;
+}
+
+function kindColumnsOf(row: SubmissionRow): KindColumns {
+  return {
+    title: row.title,
+    categoryId: row.categoryId,
+    assetId: row.assetId,
+    detailUrl: row.detailUrl,
+    ziggleNoticeId: row.ziggleNoticeId,
+    organizerName: row.organizerName,
+    subtitle: row.subtitle,
+    location: row.location,
+    description: row.description,
+  };
 }
 
 function typeCondition(types: SubmissionType[] | undefined): SQL | undefined {

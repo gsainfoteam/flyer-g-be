@@ -228,7 +228,10 @@ export type SubmissionStatus = (typeof submissionStatusEnum.enumValues)[number];
  * 심사받는 컨텐츠의 종류. 종류마다 다른 규칙은 src/submissions/kinds/의 정의 파일에 둔다.
  * 값은 그 종류의 정의가 생길 때 더한다.
  */
-export const submissionTypeEnum = pgEnum('submission_type', ['POSTER']);
+export const submissionTypeEnum = pgEnum('submission_type', [
+  'POSTER',
+  'EVENT_BANNER',
+]);
 
 export type SubmissionType = (typeof submissionTypeEnum.enumValues)[number];
 
@@ -243,12 +246,13 @@ export const submissions = pgTable(
     // detailUrl이 Ziggle 공지 주소면 서버가 뽑아 넣는다. 공지 하나에 신청 하나를 보장하는 기준.
     ziggleNoticeId: varchar('ziggle_notice_id', { length: 64 }),
     title: varchar('title', { length: 200 }).notNull(),
-    categoryId: varchar('category_id', { length: 64 })
-      .notNull()
-      .references(() => categories.id),
-    assetId: uuid('asset_id')
-      .notNull()
-      .references(() => assets.id),
+    // 포스터만 쓴다
+    categoryId: varchar('category_id', { length: 64 }).references(
+      () => categories.id,
+    ),
+    // 신청의 주 미디어. 승인 때 checksum을 고정하고, 자산 정리 잡이 참조를 확인한다.
+    // 포스터는 포스터, 이벤트 배너는 IMAGE 모드의 이미지나 TEMPLATE 모드의 사진(없으면 null).
+    assetId: uuid('asset_id').references(() => assets.id),
     detailUrl: varchar('detail_url', { length: 2048 }),
     startAt: timestamp('start_at', { withTimezone: true }).notNull(),
     endAt: timestamp('end_at', { withTimezone: true }).notNull(),
@@ -287,8 +291,65 @@ export const submissions = pgTable(
       .on(table.ziggleNoticeId)
       .where(sql`${table.status} not in ('CANCELED', 'ENDED', 'ARCHIVED')`),
     check('submissions_period_order', sql`${table.endAt} > ${table.startAt}`),
+    check(
+      'submissions_poster_fields',
+      sql`${table.type} <> 'POSTER' or (${table.categoryId} is not null and ${table.assetId} is not null)`,
+    ),
+    check(
+      'submissions_category_poster_only',
+      sql`${table.type} = 'POSTER' or ${table.categoryId} is null`,
+    ),
   ],
 );
+
+export const eventBannerModeEnum = pgEnum('event_banner_mode', [
+  'TEMPLATE',
+  'IMAGE',
+]);
+
+export const eventBannerOccasionEnum = pgEnum('event_banner_occasion', [
+  'BIRTHDAY',
+  'ADMISSION',
+  'AWARD',
+  'WELCOME',
+  'OTHER',
+]);
+
+export type EventBannerMode = (typeof eventBannerModeEnum.enumValues)[number];
+export type EventBannerOccasion =
+  (typeof eventBannerOccasionEnum.enumValues)[number];
+
+/**
+ * 이벤트 배너의 내용 (신청과 1:1). 이미지·사진은 submissions.asset_id에 있다.
+ * TEMPLATE은 TV가 문구로 그리고, IMAGE는 올린 이미지를 그대로 띄운다.
+ */
+export const submissionEventBanners = pgTable(
+  'submission_event_banners',
+  {
+    submissionId: uuid('submission_id')
+      .primaryKey()
+      .references(() => submissions.id, { onDelete: 'cascade' }),
+    mode: eventBannerModeEnum('mode').notNull(),
+    occasion: eventBannerOccasionEnum('occasion'),
+    recipient: varchar('recipient', { length: 20 }).notNull(),
+    message: varchar('message', { length: 60 }),
+    sender: varchar('sender', { length: 20 }),
+    // 사진 속 인물의 동의를 받았다고 신청자가 확인했다. 사진이 있는 TEMPLATE에서만 true다
+    photoConsent: boolean('photo_consent').notNull().default(false),
+  },
+  (table) => [
+    check(
+      'submission_event_banners_template_fields',
+      sql`${table.mode} <> 'TEMPLATE' or (${table.occasion} is not null and ${table.message} is not null)`,
+    ),
+    check(
+      'submission_event_banners_consent_template_only',
+      sql`${table.mode} = 'TEMPLATE' or not ${table.photoConsent}`,
+    ),
+  ],
+);
+
+export type SubmissionEventBanner = typeof submissionEventBanners.$inferSelect;
 
 /** 신청의 대상 위치 그룹. 없으면 전체 기기가 대상이다. */
 export const submissionTargetGroups = pgTable(
@@ -439,11 +500,15 @@ export const deviceTargetGroups = pgTable(
 
 export type Device = typeof devices.$inferSelect;
 
-/** 노출이 보인 자리. WALL: 벽에 작게, SPOTLIGHT: 크게 보기, STRIP: 띠 가운데 */
+/**
+ * 노출이 보인 자리. WALL: 벽에 작게, SPOTLIGHT: 크게 보기, STRIP: 띠 가운데,
+ * SCENE: 포스터 묶음 밖의 장면 한 장(이벤트 배너, 제보 카드)
+ */
 export const playPlacementEnum = pgEnum('play_placement', [
   'WALL',
   'SPOTLIGHT',
   'STRIP',
+  'SCENE',
 ]);
 export type PlayPlacement = (typeof playPlacementEnum.enumValues)[number];
 

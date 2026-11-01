@@ -52,7 +52,8 @@ export class PlaylistService {
         revision: submissions.version,
         title: submissions.title,
         category: categories.name,
-        assetId: submissions.assetId,
+        // 포스터는 asset이 항상 있고, 아래 inner join이 READY인 것만 남긴다
+        assetId: assets.id,
         detailUrl: submissions.detailUrl,
         startAt: submissions.startAt,
         endAt: submissions.endAt,

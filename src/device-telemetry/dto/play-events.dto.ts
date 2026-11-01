@@ -83,8 +83,9 @@ export class PlayEventDto {
 - WALL: 모아 보기의 벽에 작게 보임
 - SPOTLIGHT: 모아 보기의 크게 보기
 - STRIP: 흐르는 띠의 가운데 칸 (양옆 칸은 보내지 않는다)
+- SCENE: 포스터 묶음 밖의 장면 한 장 (이벤트 배너, 제보 카드)
 
-통계의 impressions는 WALL을 뺀 노출(SPOTLIGHT·STRIP·null)이고, WALL은 wallImpressions로 따로 센다`,
+통계의 impressions는 WALL을 뺀 노출(SPOTLIGHT·STRIP·SCENE·null)이고, WALL은 wallImpressions로 따로 센다`,
     enum: playPlacementEnum.enumValues,
     nullable: true,
     example: 'SPOTLIGHT',

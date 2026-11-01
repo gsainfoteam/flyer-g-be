@@ -16,6 +16,8 @@ export const ErrorCode = {
   ALREADY_SUBMITTED: 'ALREADY_SUBMITTED',
   /** 같은 Idempotency-Key를 다른 요청 내용으로 다시 보냈다 */
   IDEMPOTENCY_KEY_REUSED: 'IDEMPOTENCY_KEY_REUSED',
+  /** 그 종류의 사용자당 서울 하루 신청 한도를 넘었다. details: { type, limit } */
+  DAILY_LIMIT_EXCEEDED: 'DAILY_LIMIT_EXCEEDED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayUnique,
@@ -8,6 +8,7 @@ import {
   IsInt,
   IsISO8601,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -15,9 +16,11 @@ import {
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 import { submissionTypeEnum, type SubmissionType } from '../../db/schema.js';
 import { SIGNAGE_POLICY } from '../../policy/signage-policy.js';
+import { EventBannerInputDto } from './event-banner.dto.js';
 
 const TITLE_MAX_LENGTH = SIGNAGE_POLICY.titleMaxLength;
 
@@ -102,9 +105,14 @@ class SubmissionDisplayFields {
   description?: string | null;
 }
 
+/** 포스터 전용 필드는 포스터일 때만 검사한다. 다른 종류가 보내면 서비스가 422로 거절한다 */
+const isPoster = (dto: CreateSubmissionDto) =>
+  (dto.type ?? 'POSTER') === 'POSTER';
+
 export class CreateSubmissionDto extends SubmissionDisplayFields {
   @ApiPropertyOptional({
-    description: '신청 종류. 비우면 POSTER',
+    description:
+      '신청 종류. 비우면 POSTER. 종류마다 받는 필드가 다르고, 그 종류가 받지 않는 필드를 보내면 422',
     enum: submissionTypeEnum.enumValues,
     default: 'POSTER',
   })
@@ -114,32 +122,45 @@ export class CreateSubmissionDto extends SubmissionDisplayFields {
   })
   type?: SubmissionType;
 
-  @ApiProperty({
-    description: `제목. 앞뒤 공백을 지운 뒤 1~${TITLE_MAX_LENGTH}자`,
+  @ApiPropertyOptional({
+    description: `포스터만, 필수. 제목. 앞뒤 공백을 지운 뒤 1~${TITLE_MAX_LENGTH}자. 다른 종류는 서버가 만든다`,
     example: '겨울 정기 공연 〈한밤의 물리학〉',
   })
   @Transform(trim)
+  @ValidateIf(isPoster)
   @IsString({ message: '제목을 입력하세요.' })
   @IsNotEmpty({ message: '제목을 입력하세요.' })
   @MaxLength(TITLE_MAX_LENGTH, {
     message: `제목은 ${TITLE_MAX_LENGTH}자 이하여야 합니다.`,
   })
-  title: string;
+  title?: string;
 
-  @ApiProperty({
-    description: 'GET /signage/categories의 id',
+  @ApiPropertyOptional({
+    description: '포스터만, 필수. GET /signage/categories의 id',
     example: 'performance',
   })
+  @ValidateIf(isPoster)
   @IsString({ message: '카테고리를 선택하세요.' })
   @IsNotEmpty({ message: '카테고리를 선택하세요.' })
-  categoryId: string;
+  categoryId?: string;
 
-  @ApiProperty({
-    description: '업로드를 완료(complete)한 본인의 asset',
+  @ApiPropertyOptional({
+    description: '포스터만, 필수. 업로드를 완료(complete)한 본인의 asset',
     example: '0f8e2c1a-5b7d-4e21-9a0c-1d8e5f6b2c34',
   })
+  @ValidateIf(isPoster)
   @IsUUID('all', { message: '포스터를 올려주세요.' })
-  assetId: string;
+  assetId?: string;
+
+  @ApiPropertyOptional({
+    description: 'EVENT_BANNER만, 필수. 이벤트 배너의 내용',
+    type: EventBannerInputDto,
+  })
+  @ValidateIf((dto: CreateSubmissionDto) => dto.type === 'EVENT_BANNER')
+  @IsObject({ message: '이벤트 배너 내용을 입력하세요.' })
+  @ValidateNested()
+  @Type(() => EventBannerInputDto)
+  eventBanner?: EventBannerInputDto;
 
   @ApiProperty({
     description: '게시 시작 (UTC ISO 8601)',
@@ -229,6 +250,16 @@ export class UpdateSubmissionDto extends SubmissionDisplayFields {
   @ArrayUnique({ message: '같은 대상 위치를 두 번 고를 수 없습니다.' })
   @IsString({ each: true, message: '대상 위치가 올바르지 않습니다.' })
   targetGroupIds?: string[];
+
+  @ApiPropertyOptional({
+    description: 'EVENT_BANNER만. 바꿀 때는 내용 전체를 보낸다',
+    type: EventBannerInputDto,
+  })
+  @ValidateIf((_, value) => value !== undefined)
+  @IsObject({ message: '이벤트 배너 내용을 입력하세요.' })
+  @ValidateNested()
+  @Type(() => EventBannerInputDto)
+  eventBanner?: EventBannerInputDto;
 }
 
 /** 상태만 바꾸는 요청(제출·취소)의 본문 */

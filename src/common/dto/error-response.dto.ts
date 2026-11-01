@@ -15,7 +15,7 @@ export class ErrorResponseDto {
 | 409 | CONFLICT, ALREADY_SUBMITTED |
 | 413 | PAYLOAD_TOO_LARGE |
 | 422 | VALIDATION_FAILED, IDEMPOTENCY_KEY_REUSED |
-| 429 | RATE_LIMITED |
+| 429 | RATE_LIMITED, DAILY_LIMIT_EXCEEDED |
 | 5xx | SERVER_ERROR |`,
     enum: Object.values(ErrorCode),
     example: ErrorCode.VALIDATION_FAILED,
@@ -43,4 +43,16 @@ export class ErrorResponseDto {
     example: { endAt: '종료 시각은 시작 시각보다 뒤여야 합니다.' },
   })
   fields?: Record<string, string>;
+
+  @ApiPropertyOptional({
+    description: `code마다 정해진 부가 정보. 안내 문구를 만드는 데 쓴다.
+
+| code | details |
+|---|---|
+| DAILY_LIMIT_EXCEEDED | \`{ type: 신청 종류, limit: 하루 한도 }\` |`,
+    type: 'object',
+    additionalProperties: true,
+    example: { type: 'EVENT_BANNER', limit: 3 },
+  })
+  details?: Record<string, unknown>;
 }
