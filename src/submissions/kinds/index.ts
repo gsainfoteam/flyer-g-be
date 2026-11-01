@@ -1,6 +1,7 @@
 import type { SubmissionType } from '../../db/schema.js';
 import { EVENT_BANNER_KIND } from './event-banner.kind.js';
 import { POSTER_KIND } from './poster.kind.js';
+import { STORY_KIND } from './story.kind.js';
 import type { SubmissionKind } from './submission-kind.js';
 
 export type { SubmissionKind } from './submission-kind.js';
@@ -12,6 +13,7 @@ export { KIND_INPUT_FIELDS } from './submission-kind.js';
 const SUBMISSION_KINDS = {
   POSTER: POSTER_KIND,
   EVENT_BANNER: EVENT_BANNER_KIND,
+  STORY: STORY_KIND,
 } as const satisfies Record<SubmissionType, SubmissionKind>;
 
 export function kindOf(type: SubmissionType): SubmissionKind {

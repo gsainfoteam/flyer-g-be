@@ -55,6 +55,7 @@ import type {
   SubmissionScope,
 } from './dto/submission-query.dto.js';
 import type {
+  SubmissionAuthorDto,
   SubmissionDetailDto,
   SubmissionDto,
   SubmissionSummaryDto,
@@ -75,6 +76,7 @@ import {
   EDITABLE_STATUSES,
   hasStartedPublishing,
   REAPPROVAL_STATUSES,
+  RETURNED_STATUSES,
   SUBMITTABLE_STATUSES,
 } from './submission-rules.js';
 
@@ -169,9 +171,12 @@ export class SubmissionsService {
   ): Promise<SubmissionDetailDto> {
     const now = new Date();
     const kind = kindOf(dto.type ?? 'POSTER');
-    const startAt = new Date(dto.startAt);
-    const endAt = new Date(dto.endAt);
-    const targetGroupIds = dto.targetGroupIds ?? [];
+    // 기간을 받지 않는 종류는 승인 때 정한다. 보냈으면 unacceptedFields가 거절한다
+    const period =
+      kind.schedule.mode === 'REQUESTED'
+        ? { startAt: new Date(dto.startAt!), endAt: new Date(dto.endAt!) }
+        : { startAt: null, endAt: null };
+    const targetGroupIds = kind.targetable ? (dto.targetGroupIds ?? []) : [];
 
     const resolved = await kind.resolve(
       kindInputOf(dto),
@@ -180,7 +185,7 @@ export class SubmissionsService {
     );
     const errors: FieldErrors = {
       ...unacceptedFields(kind, dto),
-      ...kind.validateSchedule(startAt, endAt, now),
+      ...validateSchedule(kind, period, now),
       ...resolved.errors,
       ...(await this.validateTargetGroups(targetGroupIds)),
     };
@@ -197,8 +202,7 @@ export class SubmissionsService {
             type: kind.type,
             requesterId: user.id,
             ...resolved.columns,
-            startAt,
-            endAt,
+            ...period,
             status: 'PENDING_REVIEW',
             submittedAt: now,
             createdAt: now,
@@ -224,7 +228,7 @@ export class SubmissionsService {
       }),
     );
 
-    return this.detail(id, now);
+    return this.detail(id, now, user);
   }
 
   async list(
@@ -269,7 +273,7 @@ export class SubmissionsService {
       serverTime: now,
       cursorOf: (row) => [row.createdAt.toISOString(), row.id],
       map: (row) =>
-        this.toDto(row, groupIds.get(row.id) ?? [], details.get(row.id)),
+        this.toDto(user, row, groupIds.get(row.id) ?? [], details.get(row.id)),
     });
   }
 
@@ -359,7 +363,7 @@ export class SubmissionsService {
     if (!row || (row.requesterId !== user.id && !isReviewer(user.roles))) {
       throw notFound();
     }
-    return this.detail(id, new Date());
+    return this.detail(id, new Date(), user);
   }
 
   /**
@@ -379,8 +383,11 @@ export class SubmissionsService {
     ) {
       throw conflict(`Submission in ${current.status} cannot be edited`);
     }
-
     const kind = kindOf(current.type);
+    if (!kind.resubmittable && RETURNED_STATUSES.includes(current.status)) {
+      throw notResubmittable();
+    }
+
     const currentDetail = (await this.detailsOf([current])).get(id) ?? null;
     const resolved = await kind.resolve(
       kindInputOf(dto),
@@ -417,7 +424,7 @@ export class SubmissionsService {
       if (Object.keys(errors).length > 0) {
         throw validationFailed(errors);
       }
-      return this.detail(id, now);
+      return this.detail(id, now, user);
     }
 
     const needsReapproval = REAPPROVAL_STATUSES.includes(current.status);
@@ -425,9 +432,12 @@ export class SubmissionsService {
     if (changes.startAt || changes.endAt || needsReapproval) {
       Object.assign(
         errors,
-        kind.validateSchedule(
-          changes.startAt ?? current.startAt,
-          changes.endAt ?? current.endAt,
+        validateSchedule(
+          kind,
+          {
+            startAt: changes.startAt ?? current.startAt,
+            endAt: changes.endAt ?? current.endAt,
+          },
           now,
         ),
       );
@@ -500,7 +510,7 @@ export class SubmissionsService {
       }),
     );
 
-    return this.detail(id, now);
+    return this.detail(id, now, user);
   }
 
   /** 반려·중단된 신청을 고친 뒤 다시 검토를 요청한다. */
@@ -514,11 +524,11 @@ export class SubmissionsService {
     if (!SUBMITTABLE_STATUSES.includes(current.status)) {
       throw conflict(`Submission in ${current.status} cannot be submitted`);
     }
-    const errors = kindOf(current.type).validateSchedule(
-      current.startAt,
-      current.endAt,
-      now,
-    );
+    const kind = kindOf(current.type);
+    if (!kind.resubmittable) {
+      throw notResubmittable();
+    }
+    const errors = validateSchedule(kind, current, now);
     if (Object.keys(errors).length > 0) {
       throw validationFailed(errors);
     }
@@ -535,7 +545,7 @@ export class SubmissionsService {
         at: now,
       });
     });
-    return this.detail(id, now);
+    return this.detail(id, now, user);
   }
 
   async cancel(
@@ -559,7 +569,45 @@ export class SubmissionsService {
         at: now,
       });
     });
-    return this.detail(id, now);
+    return this.detail(id, now, user);
+  }
+
+  /**
+   * 작성자를 가리는 신청의 작성자. 열람할 때마다 감사 로그를 남기고, 작성자는 로그에 넣지 않는다
+   * (감사 로그는 REVIEWER도 읽는다). 권한(SUPER_ADMIN) 확인은 컨트롤러가 한다.
+   */
+  async revealAuthor(
+    admin: AuthUser,
+    id: string,
+  ): Promise<SubmissionAuthorDto> {
+    const now = new Date();
+    const [row] = await this.db
+      .select({
+        type: submissions.type,
+        requesterId: users.id,
+        requesterName: users.name,
+        requesterEmail: users.email,
+      })
+      .from(submissions)
+      .innerJoin(users, eq(users.id, submissions.requesterId))
+      .where(eq(submissions.id, id));
+    if (!row) {
+      throw notFound();
+    }
+    if (!kindOf(row.type).anonymous) {
+      throw conflict('Author of this submission is not hidden');
+    }
+
+    await this.db.transaction((tx) =>
+      this.auditService.record(tx, {
+        actor: { type: 'USER', id: admin.id },
+        action: 'STORY_AUTHOR_REVEALED',
+        target: { type: 'SUBMISSION', id },
+        at: now,
+      }),
+    );
+    const { type: _, ...author } = row;
+    return author;
   }
 
   /**
@@ -567,6 +615,7 @@ export class SubmissionsService {
    * 권한 확인은 호출하는 쪽(검토 API)이 한다.
    */
   async listReviewQueue(
+    viewer: AuthUser,
     query: ReviewQueueQueryDto,
   ): Promise<Page<SubmissionDto>> {
     const now = new Date();
@@ -607,7 +656,12 @@ export class SubmissionsService {
         row.id,
       ],
       map: (row) =>
-        this.toDto(row, groupIds.get(row.id) ?? [], details.get(row.id)),
+        this.toDto(
+          viewer,
+          row,
+          groupIds.get(row.id) ?? [],
+          details.get(row.id),
+        ),
     });
   }
 
@@ -680,7 +734,12 @@ export class SubmissionsService {
     return result;
   }
 
-  async detail(id: string, now: Date): Promise<SubmissionDetailDto> {
+  /** 단건 응답. viewer에 따라 작성자를 가린다(toDto) */
+  async detail(
+    id: string,
+    now: Date,
+    viewer: AuthUser,
+  ): Promise<SubmissionDetailDto> {
     const row = await this.findRow(id);
     if (!row) {
       throw notFound();
@@ -690,7 +749,7 @@ export class SubmissionsService {
       this.detailsOf([row]),
     ]);
     return {
-      ...this.toDto(row, groups.get(id) ?? [], details.get(id)),
+      ...this.toDto(viewer, row, groups.get(id) ?? [], details.get(id)),
       serverTime: now.toISOString(),
     };
   }
@@ -713,20 +772,24 @@ export class SubmissionsService {
     return new Map(maps.flatMap((map) => [...map]));
   }
 
+  /** 작성자를 가리는 종류는 이 한 곳에서 가린다. 본인 말고는 검토자도 보지 못한다 */
   private toDto(
+    viewer: AuthUser,
     row: SubmissionRow,
     targetGroupIds: string[],
     detail: unknown,
   ): SubmissionDto {
+    const kind = kindOf(row.type);
+    const hideRequester = kind.anonymous && viewer.id !== row.requesterId;
     return {
       id: row.id,
-      requesterId: row.requesterId,
-      requesterName: row.requesterName,
+      requesterId: hideRequester ? null : row.requesterId,
+      requesterName: hideRequester ? null : row.requesterName,
       type: row.type,
       title: row.title,
-      ...kindOf(row.type).toResponse(row, detail ?? null, this.assetsService),
-      startAt: row.startAt.toISOString(),
-      endAt: row.endAt.toISOString(),
+      ...kind.toResponse(row, detail ?? null, this.assetsService),
+      startAt: row.startAt?.toISOString() ?? null,
+      endAt: row.endAt?.toISOString() ?? null,
       status: row.status,
       priority: row.priority,
       targetGroupIds,
@@ -839,18 +902,42 @@ function kindInputOf(
   ) as KindInput;
 }
 
-/** 그 종류가 받지 않는 필드를 보냈으면 필드마다 오류. null은 보내지 않은 것으로 본다 */
+/**
+ * 그 종류가 받지 않는 필드를 보냈으면 필드마다 오류. null과 빈 대상 위치는 보내지 않은 것으로 본다.
+ * 기간을 승인 때 정하는 종류는 기간을, 대상 위치가 없는 종류는 대상 위치를 받지 않는다.
+ */
 function unacceptedFields(
   kind: SubmissionKind,
   dto: CreateSubmissionDto | UpdateSubmissionDto,
 ): FieldErrors {
-  const errors: FieldErrors = {};
-  for (const field of KIND_INPUT_FIELDS) {
-    if (dto[field] != null && !kind.inputFields.includes(field)) {
-      errors[field] = '이 종류의 신청에는 쓸 수 없는 항목입니다.';
-    }
+  const unaccepted: string[] = KIND_INPUT_FIELDS.filter(
+    (field) => dto[field] != null && !kind.inputFields.includes(field),
+  );
+  if (kind.schedule.mode === 'ON_APPROVAL') {
+    unaccepted.push(
+      ...(['startAt', 'endAt'] as const).filter((field) => dto[field] != null),
+    );
   }
-  return errors;
+  if (!kind.targetable && dto.targetGroupIds?.length) {
+    unaccepted.push('targetGroupIds');
+  }
+  return Object.fromEntries(
+    unaccepted.map((field) => [
+      field,
+      '이 종류의 신청에는 쓸 수 없는 항목입니다.',
+    ]),
+  );
+}
+
+/** 신청자가 정한 기간의 규칙. 승인 때 기간을 정하는 종류는 검사할 것이 없다 */
+function validateSchedule(
+  kind: SubmissionKind,
+  period: { startAt: Date | null; endAt: Date | null },
+  now: Date,
+): FieldErrors {
+  return kind.schedule.mode === 'REQUESTED'
+    ? kind.schedule.validate(period.startAt!, period.endAt!, now)
+    : {};
 }
 
 function kindColumnsOf(row: SubmissionRow): KindColumns {
@@ -869,6 +956,14 @@ function kindColumnsOf(row: SubmissionRow): KindColumns {
 
 function typeCondition(types: SubmissionType[] | undefined): SQL | undefined {
   return types?.length ? inArray(submissions.type, types) : undefined;
+}
+
+function notResubmittable(): AppException {
+  return new AppException(
+    HttpStatus.CONFLICT,
+    ErrorCode.NOT_RESUBMITTABLE,
+    'This kind cannot be resubmitted after review. Write a new one',
+  );
 }
 
 function notFound(): AppException {

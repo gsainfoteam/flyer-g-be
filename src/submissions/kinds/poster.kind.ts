@@ -34,16 +34,25 @@ export const POSTER_KIND: SubmissionKind<null> = {
     'description',
   ],
 
-  validateSchedule(startAt, endAt, now) {
-    const errors = validatePeriod(startAt, endAt, now);
-    const { maxPublishMonths } = SIGNAGE_POLICY;
-    if (!errors.endAt && endAt > addMonthsInSeoul(startAt, maxPublishMonths)) {
-      errors.endAt = `게시 기간은 최대 ${maxPublishMonths}개월입니다.`;
-    }
-    return errors;
+  schedule: {
+    mode: 'REQUESTED',
+    validate(startAt, endAt, now) {
+      const errors = validatePeriod(startAt, endAt, now);
+      const { maxPublishMonths } = SIGNAGE_POLICY;
+      if (
+        !errors.endAt &&
+        endAt > addMonthsInSeoul(startAt, maxPublishMonths)
+      ) {
+        errors.endAt = `게시 기간은 최대 ${maxPublishMonths}개월입니다.`;
+      }
+      return errors;
+    },
   },
 
+  targetable: true,
   dailyLimit: null,
+  resubmittable: true,
+  anonymous: false,
 
   async resolve(input, current, ctx) {
     const errors: FieldErrors = {};

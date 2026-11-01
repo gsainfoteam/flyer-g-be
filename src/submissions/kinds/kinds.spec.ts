@@ -2,6 +2,14 @@ import { submissionTypeEnum } from '../../db/schema.js';
 import { dailySubmissionLimits, KIND_INPUT_FIELDS, kindOf } from './index.js';
 import { POSTER_KIND } from './poster.kind.js';
 
+/** 신청자가 기간을 정하는 종류의 기간 규칙 */
+function validate(startAt: Date, endAt: Date, now: Date) {
+  if (POSTER_KIND.schedule.mode !== 'REQUESTED') {
+    throw new Error('expected REQUESTED schedule');
+  }
+  return POSTER_KIND.schedule.validate(startAt, endAt, now);
+}
+
 const NOW = new Date('2026-07-29T06:30:00.000Z');
 const hours = (h: number) => new Date(NOW.getTime() + h * 3600_000);
 const kst = (iso: string) => new Date(`${iso}+09:00`);
@@ -24,29 +32,27 @@ describe('SUBMISSION_KINDS', () => {
   );
 
   it('하루 한도는 한도가 있는 종류만 담는다', () => {
-    expect(dailySubmissionLimits()).toEqual({ EVENT_BANNER: 3 });
+    expect(dailySubmissionLimits()).toEqual({ EVENT_BANNER: 3, STORY: 5 });
   });
 });
 
-describe('POSTER_KIND.validateSchedule', () => {
+describe('POSTER_KIND.schedule', () => {
   it('시작 시각이 지금이거나 지났어도 받는다 (24시간 전 신청 규칙 없음)', () => {
-    expect(POSTER_KIND.validateSchedule(NOW, hours(24), NOW)).toEqual({});
-    expect(POSTER_KIND.validateSchedule(hours(-3), hours(24), NOW)).toEqual({});
+    expect(validate(NOW, hours(24), NOW)).toEqual({});
+    expect(validate(hours(-3), hours(24), NOW)).toEqual({});
   });
 
   it('공통 기간 규칙을 따른다', () => {
-    expect(POSTER_KIND.validateSchedule(hours(48), hours(48), NOW)).toEqual({
+    expect(validate(hours(48), hours(48), NOW)).toEqual({
       endAt: '종료 시각은 시작 시각보다 뒤여야 합니다.',
     });
   });
 
   it('최대 게시 기간(3개월, 서울 달력)을 넘으면 endAt 오류', () => {
     const start = kst('2026-11-30T09:00:00');
-    expect(
-      POSTER_KIND.validateSchedule(start, kst('2027-02-28T09:00:00'), NOW),
-    ).toEqual({});
-    expect(
-      POSTER_KIND.validateSchedule(start, kst('2027-02-28T09:00:01'), NOW),
-    ).toEqual({ endAt: '게시 기간은 최대 3개월입니다.' });
+    expect(validate(start, kst('2027-02-28T09:00:00'), NOW)).toEqual({});
+    expect(validate(start, kst('2027-02-28T09:00:01'), NOW)).toEqual({
+      endAt: '게시 기간은 최대 3개월입니다.',
+    });
   });
 });

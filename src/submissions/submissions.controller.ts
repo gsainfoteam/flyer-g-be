@@ -24,6 +24,7 @@ import {
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
+import { Roles } from '../auth/decorators/roles.decorator.js';
 import type { AuthUser } from '../auth/types/auth-user.js';
 import { ErrorResponseDto } from '../common/dto/error-response.dto.js';
 import { AppException } from '../common/errors/app.exception.js';
@@ -42,6 +43,7 @@ import {
   SubmissionSummaryQueryDto,
 } from './dto/submission-query.dto.js';
 import {
+  SubmissionAuthorDto,
   SubmissionDetailDto,
   SubmissionDto,
   SubmissionSummaryDto,
@@ -205,13 +207,14 @@ export class SubmissionsController {
   @ApiOperation({
     summary: '재검토 요청',
     description:
-      '반려(REJECTED)·중단(SUSPENDED)된 신청을 다시 검토 대기(PENDING_REVIEW)로 보낸다. 기간 규칙을 지금 시각으로 다시 검사하므로, 시작이 지났으면 먼저 기간을 고친다.',
+      '반려(REJECTED)·중단(SUSPENDED)된 신청을 다시 검토 대기(PENDING_REVIEW)로 보낸다. 기간 규칙을 지금 시각으로 다시 검사하므로, 종료가 지났으면 먼저 기간을 고친다. 소식 제보(STORY)는 다시 낼 수 없다(409 NOT_RESUBMITTABLE, 새로 쓴다).',
   })
   @ApiParam(ID_PARAM)
   @ApiOkResponse({ type: SubmissionDetailDto })
   @ApiNotFoundResponse(NOT_FOUND_DOC)
   @ApiConflictResponse({
-    description: 'version이 최신이 아니거나 REJECTED·SUSPENDED·DRAFT가 아님',
+    description:
+      'version이 최신이 아니거나 REJECTED·SUSPENDED·DRAFT가 아님 (CONFLICT). 다시 낼 수 없는 종류 (NOT_RESUBMITTABLE)',
     type: ErrorResponseDto,
   })
   @ApiUnprocessableEntityResponse({
@@ -248,5 +251,33 @@ export class SubmissionsController {
     @Body() dto: SubmissionVersionDto,
   ): Promise<SubmissionDetailDto> {
     return this.submissionsService.cancel(user, id, dto.version);
+  }
+
+  @Post(':id/reveal-author')
+  @HttpCode(200)
+  @Roles('SUPER_ADMIN')
+  @ApiOperation({
+    summary: '제보 작성자 열람',
+    description: `작성자를 가리는 신청(STORY)의 작성자를 본다. SUPER_ADMIN만.
+
+- 부를 때마다 감사 로그 \`STORY_AUTHOR_REVEALED\`(누가, 언제, 어느 제보)를 남긴다. 작성자는 감사 로그에도 남기지 않는다
+- 작성자를 가리지 않는 종류면 409`,
+  })
+  @ApiParam(ID_PARAM)
+  @ApiOkResponse({ type: SubmissionAuthorDto })
+  @ApiForbiddenResponse({
+    description: 'SUPER_ADMIN이 아님',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse(NOT_FOUND_DOC)
+  @ApiConflictResponse({
+    description: '작성자를 가리지 않는 종류',
+    type: ErrorResponseDto,
+  })
+  revealAuthor(
+    @CurrentUser() user: AuthUser,
+    @Param('id', submissionIdPipe) id: string,
+  ): Promise<SubmissionAuthorDto> {
+    return this.submissionsService.revealAuthor(user, id);
   }
 }

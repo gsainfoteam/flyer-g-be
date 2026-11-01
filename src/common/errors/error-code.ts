@@ -18,6 +18,8 @@ export const ErrorCode = {
   IDEMPOTENCY_KEY_REUSED: 'IDEMPOTENCY_KEY_REUSED',
   /** 그 종류의 사용자당 서울 하루 신청 한도를 넘었다. details: { type, limit } */
   DAILY_LIMIT_EXCEEDED: 'DAILY_LIMIT_EXCEEDED',
+  /** 반려·중단된 뒤 고쳐서 다시 낼 수 없는 종류다(소식 제보). 새로 써야 한다 */
+  NOT_RESUBMITTABLE: 'NOT_RESUBMITTABLE',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

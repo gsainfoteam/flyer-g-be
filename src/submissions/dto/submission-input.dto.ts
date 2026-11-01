@@ -21,6 +21,7 @@ import {
 import { submissionTypeEnum, type SubmissionType } from '../../db/schema.js';
 import { SIGNAGE_POLICY } from '../../policy/signage-policy.js';
 import { EventBannerInputDto } from './event-banner.dto.js';
+import { StoryInputDto } from './story.dto.js';
 
 const TITLE_MAX_LENGTH = SIGNAGE_POLICY.titleMaxLength;
 
@@ -109,6 +110,9 @@ class SubmissionDisplayFields {
 const isPoster = (dto: CreateSubmissionDto) =>
   (dto.type ?? 'POSTER') === 'POSTER';
 
+/** 기간은 승인 때 정하는 STORY 말고는 필수다. STORY가 보내면 서비스가 422로 거절한다 */
+const requestsPeriod = (dto: CreateSubmissionDto) => dto.type !== 'STORY';
+
 export class CreateSubmissionDto extends SubmissionDisplayFields {
   @ApiPropertyOptional({
     description:
@@ -162,25 +166,38 @@ export class CreateSubmissionDto extends SubmissionDisplayFields {
   @Type(() => EventBannerInputDto)
   eventBanner?: EventBannerInputDto;
 
-  @ApiProperty({
-    description: '게시 시작 (UTC ISO 8601)',
-    example: '2026-07-30T00:00:00.000Z',
+  @ApiPropertyOptional({
+    description: 'STORY만, 필수. 소식 제보의 내용',
+    type: StoryInputDto,
   })
-  @IsISO8601({ strict: true }, { message: DATE_MESSAGE })
-  @Matches(WITH_OFFSET, { message: DATE_MESSAGE })
-  startAt: string;
-
-  @ApiProperty({
-    description: '게시 종료 (UTC ISO 8601)',
-    example: '2026-08-06T14:59:59.000Z',
-  })
-  @IsISO8601({ strict: true }, { message: DATE_MESSAGE })
-  @Matches(WITH_OFFSET, { message: DATE_MESSAGE })
-  endAt: string;
+  @ValidateIf((dto: CreateSubmissionDto) => dto.type === 'STORY')
+  @IsObject({ message: '제보 내용을 입력하세요.' })
+  @ValidateNested()
+  @Type(() => StoryInputDto)
+  story?: StoryInputDto;
 
   @ApiPropertyOptional({
     description:
-      'GET /signage/target-groups의 id 목록(숨긴 그룹 제외). 비우면 전체 기기가 대상',
+      '게시 시작 (UTC ISO 8601). STORY 말고는 필수. STORY는 승인 때 서버가 정하므로 보내면 422',
+    example: '2026-07-30T00:00:00.000Z',
+  })
+  @ValidateIf(requestsPeriod)
+  @IsISO8601({ strict: true }, { message: DATE_MESSAGE })
+  @Matches(WITH_OFFSET, { message: DATE_MESSAGE })
+  startAt?: string;
+
+  @ApiPropertyOptional({
+    description: '게시 종료 (UTC ISO 8601). startAt과 같은 규칙',
+    example: '2026-08-06T14:59:59.000Z',
+  })
+  @ValidateIf(requestsPeriod)
+  @IsISO8601({ strict: true }, { message: DATE_MESSAGE })
+  @Matches(WITH_OFFSET, { message: DATE_MESSAGE })
+  endAt?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'GET /signage/target-groups의 id 목록(숨긴 그룹 제외). 비우면 전체 기기가 대상. STORY는 항상 전체 기기라 보내면 422',
     type: [String],
     example: [],
     default: [],
@@ -260,6 +277,17 @@ export class UpdateSubmissionDto extends SubmissionDisplayFields {
   @ValidateNested()
   @Type(() => EventBannerInputDto)
   eventBanner?: EventBannerInputDto;
+
+  @ApiPropertyOptional({
+    description:
+      'STORY만. 바꿀 때는 내용 전체를 보낸다. 검토 대기 중에만 고칠 수 있다',
+    type: StoryInputDto,
+  })
+  @ValidateIf((_, value) => value !== undefined)
+  @IsObject({ message: '제보 내용을 입력하세요.' })
+  @ValidateNested()
+  @Type(() => StoryInputDto)
+  story?: StoryInputDto;
 }
 
 /** 상태만 바꾸는 요청(제출·취소)의 본문 */

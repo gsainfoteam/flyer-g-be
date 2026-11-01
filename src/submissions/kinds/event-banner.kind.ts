@@ -1,4 +1,4 @@
-import { eq, inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import type { FieldErrors } from '../../common/errors/app.exception.js';
 import { isSeoulMidnight } from '../../common/time/seoul-time.js';
 import {
@@ -57,27 +57,33 @@ export const EVENT_BANNER_KIND: SubmissionKind<EventBannerDetail> = {
 
   inputFields: ['eventBanner'],
 
-  validateSchedule(startAt, endAt, now) {
-    const errors = validatePeriod(startAt, endAt, now);
-    const { eventBannerMaxDays } = SIGNAGE_POLICY;
-    if (!isSeoulMidnight(startAt)) {
-      errors.startAt = '시작은 서울 기준 자정(00:00)이어야 합니다.';
-    }
-    if (errors.endAt) {
+  schedule: {
+    mode: 'REQUESTED',
+    validate(startAt, endAt, now) {
+      const errors = validatePeriod(startAt, endAt, now);
+      const { eventBannerMaxDays } = SIGNAGE_POLICY;
+      if (!isSeoulMidnight(startAt)) {
+        errors.startAt = '시작은 서울 기준 자정(00:00)이어야 합니다.';
+      }
+      if (errors.endAt) {
+        return errors;
+      }
+      if (!isSeoulMidnight(endAt)) {
+        errors.endAt = '종료는 서울 기준 자정(00:00)이어야 합니다.';
+      } else if (
+        endAt.getTime() - startAt.getTime() >
+        eventBannerMaxDays * DAY_MS
+      ) {
+        errors.endAt = `이벤트 배너는 최대 ${eventBannerMaxDays}일까지 걸 수 있습니다.`;
+      }
       return errors;
-    }
-    if (!isSeoulMidnight(endAt)) {
-      errors.endAt = '종료는 서울 기준 자정(00:00)이어야 합니다.';
-    } else if (
-      endAt.getTime() - startAt.getTime() >
-      eventBannerMaxDays * DAY_MS
-    ) {
-      errors.endAt = `이벤트 배너는 최대 ${eventBannerMaxDays}일까지 걸 수 있습니다.`;
-    }
-    return errors;
+    },
   },
 
+  targetable: true,
   dailyLimit: 3,
+  resubmittable: true,
+  anonymous: false,
 
   async resolve(input, current, ctx) {
     const banner = input.eventBanner;
@@ -166,16 +172,13 @@ export const EVENT_BANNER_KIND: SubmissionKind<EventBannerDetail> = {
     },
 
     async save(tx, submissionId, detail) {
-      const [updated] = await tx
-        .update(submissionEventBanners)
-        .set(detail)
-        .where(eq(submissionEventBanners.submissionId, submissionId))
-        .returning({ id: submissionEventBanners.submissionId });
-      if (!updated) {
-        await tx
-          .insert(submissionEventBanners)
-          .values({ submissionId, ...detail });
-      }
+      await tx
+        .insert(submissionEventBanners)
+        .values({ submissionId, ...detail })
+        .onConflictDoUpdate({
+          target: submissionEventBanners.submissionId,
+          set: detail,
+        });
     },
 
     equals(a, b) {

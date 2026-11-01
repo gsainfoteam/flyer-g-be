@@ -42,6 +42,8 @@ export const SIGNAGE_POLICY = {
   maxPublishMonths: 3,
   /** 이벤트 배너의 최대 게시 일수. 서울 자정부터 자정까지 센다 */
   eventBannerMaxDays: 3,
+  /** 소식 제보의 게시 일수. 승인한 순간부터 센다 */
+  storyDisplayDays: 2,
   /** 상세 링크(QR)로 허용하는 호스트. HTTPS만 허용한다 */
   allowedDetailUrlHosts: ['ziggle.gistory.me'],
 } as const;

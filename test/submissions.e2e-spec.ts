@@ -477,6 +477,7 @@ describe('게시 신청 (e2e)', () => {
           oldestSubmittedAt: pending.submittedAt!.toISOString(),
         },
         EVENT_BANNER: { pendingReview: 0, oldestSubmittedAt: null },
+        STORY: { pendingReview: 0, oldestSubmittedAt: null },
       });
 
       await get('/signage/submissions/summary?scope=all', lister).expect(403);

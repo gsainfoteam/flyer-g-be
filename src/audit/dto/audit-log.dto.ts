@@ -81,7 +81,8 @@ export class AuditLogDto {
   actorType: (typeof auditActorTypeEnum.enumValues)[number];
 
   @ApiProperty({
-    description: '행위자 ID. SYSTEM이면 null',
+    description:
+      '행위자 ID. SYSTEM이면 null. 작성자를 가리는 신청(STORY)에 작성자가 한 일이면 작성자 본인이 아닌 사람에게 null',
     type: String,
     nullable: true,
     example: '6f1c2c1e-0000-4000-8000-000000000002',
@@ -89,7 +90,8 @@ export class AuditLogDto {
   actorId: string | null;
 
   @ApiProperty({
-    description: '행위자 이름 (사용자일 때). SYSTEM이거나 삭제된 사용자면 null',
+    description:
+      '행위자 이름 (사용자일 때). SYSTEM이거나 삭제된 사용자면 null. actorId와 같은 규칙으로 가린다',
     type: String,
     nullable: true,
     example: '김관리',
@@ -97,7 +99,7 @@ export class AuditLogDto {
   actorName: string | null;
 
   @ApiProperty({
-    description: `행위. 신청: SUBMISSION_CREATED, _UPDATED, _RESUBMITTED, _CANCELED, _APPROVED, _REJECTED, _SUSPENDED, _SCHEDULED, _PUBLISHED, _ENDED
+    description: `행위. 신청: SUBMISSION_CREATED, _UPDATED, _RESUBMITTED, _CANCELED, _APPROVED, _REJECTED, _SUSPENDED, _SCHEDULED, _PUBLISHED, _ENDED, STORY_AUTHOR_REVEALED
 기기: DEVICE_REGISTERED, DEVICE_UPDATED, DEVICE_TOKEN_ROTATED
 위치 그룹: GROUP_CREATED, GROUP_UPDATED, GROUP_DELETED
 사용자 역할: USER_ROLE_GRANTED, USER_ROLE_REVOKED (SUPER_ADMIN만 볼 수 있다)
@@ -105,6 +107,7 @@ export class AuditLogDto {
 - _SCHEDULED·_PUBLISHED·_ENDED는 1분마다 도는 주기 작업이 기간에 맞춰 상태를 바꿀 때 actorType SYSTEM으로 남는다. 실제 시작·종료 시각보다 최대 1분 늦게 찍힐 수 있다
 - 시작 시각이 이미 지난 신청을 승인하면 바로 게시되어 _PUBLISHED 없이 _APPROVED 하나만 남는다. 이때 metadata.toStatus가 PUBLISHED다
 - 중단(_SUSPENDED)된 게시에는 _ENDED가 남지 않는다
+- STORY_AUTHOR_REVEALED: 운영자가 제보 작성자를 열람했다. actor가 열람한 운영자이고, 작성자는 metadata에도 없다
 - GROUP_* metadata: _CREATED·_DELETED는 { name }, _UPDATED는 { changes: { name?: { from, to }, isHidden?: { from, to } } }
 - USER_ROLE_* metadata: { role } (REVIEWER 또는 SUPER_ADMIN). targetId는 역할이 바뀐 사용자`,
     example: 'SUBMISSION_APPROVED',

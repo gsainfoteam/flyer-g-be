@@ -79,8 +79,11 @@ export class ReviewsController {
     description: '알 수 없는 상태·종류, 잘못된 limit',
     type: ErrorResponseDto,
   })
-  queue(@Query() query: ReviewQueueQueryDto): Promise<Page<SubmissionDto>> {
-    return this.submissionsService.listReviewQueue(query);
+  queue(
+    @CurrentUser() user: AuthUser,
+    @Query() query: ReviewQueueQueryDto,
+  ): Promise<Page<SubmissionDto>> {
+    return this.submissionsService.listReviewQueue(user, query);
   }
 
   @Post('submissions/:id/approve')

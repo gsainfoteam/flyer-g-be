@@ -13,9 +13,11 @@ import {
   auditLogs,
   devices,
   submissions,
+  submissionTypeEnum,
   targetGroups,
   users,
 } from '../db/schema.js';
+import { kindOf } from '../submissions/kinds/index.js';
 import type { AuditTargetType } from './audit.service.js';
 import type {
   AuditLogDto,
@@ -79,28 +81,73 @@ export class AuditLogsService {
         .from(auditLogs)
         .where(filter),
     ]);
-    const titles = await this.targetTitlesOf(rows.map(({ log }) => log));
+    const logs = rows.map(({ log }) => log);
+    const [titles, hiddenAuthors] = await Promise.all([
+      this.targetTitlesOf(logs),
+      this.hiddenAuthorsOf(user, logs),
+    ]);
 
     return toPage(rows, {
       limit: query.limit,
       totalCount: total,
       serverTime: now,
       cursorOf: ({ log }) => [log.createdAt.toISOString(), log.id],
-      map: ({ log, actorName }) => ({
-        id: log.id,
-        actorType: log.actorType,
-        actorId: log.actorId,
-        actorName,
-        action: log.action,
-        targetType: log.targetType,
-        targetId: log.targetId,
-        targetTitle: titles.get(titleKey(log)) ?? null,
-        reason: log.reason,
-        metadata: (log.metadata as Record<string, unknown> | null) ?? null,
-        createdAt: log.createdAt.toISOString(),
-        requestId: log.requestId,
-      }),
+      map: ({ log, actorName }) => {
+        const hideActor =
+          log.actorType === 'USER' &&
+          log.actorId !== null &&
+          hiddenAuthors.get(log.targetId) === log.actorId;
+        return {
+          id: log.id,
+          actorType: log.actorType,
+          actorId: hideActor ? null : log.actorId,
+          actorName: hideActor ? null : actorName,
+          action: log.action,
+          targetType: log.targetType,
+          targetId: log.targetId,
+          targetTitle: titles.get(titleKey(log)) ?? null,
+          reason: log.reason,
+          metadata: (log.metadata as Record<string, unknown> | null) ?? null,
+          createdAt: log.createdAt.toISOString(),
+          requestId: log.requestId,
+        };
+      },
     });
+  }
+
+  /**
+   * 작성자를 가리는 신청(제보)의 신청 id → 작성자 id. 작성자 본인이 보는 신청은 넣지 않는다.
+   * 작성자가 직접 한 일(생성·수정·취소)의 행위자를 가려, 감사 로그에서 작성자가 드러나지 않게 한다.
+   */
+  private async hiddenAuthorsOf(
+    viewer: AuthUser,
+    logs: AuditLogRow[],
+  ): Promise<Map<string, string>> {
+    const anonymousTypes = submissionTypeEnum.enumValues.filter(
+      (type) => kindOf(type).anonymous,
+    );
+    const ids = [
+      ...new Set(
+        logs
+          .filter((log) => log.targetType === 'SUBMISSION')
+          .map((log) => log.targetId)
+          .filter((id) => uuidSchema.safeParse(id).success),
+      ),
+    ];
+    if (ids.length === 0 || anonymousTypes.length === 0) {
+      return new Map();
+    }
+    const rows = await this.db
+      .select({ id: submissions.id, requesterId: submissions.requesterId })
+      .from(submissions)
+      .where(
+        and(
+          inArray(submissions.id, ids),
+          inArray(submissions.type, anonymousTypes),
+          ne(submissions.requesterId, viewer.id),
+        ),
+      );
+    return new Map(rows.map((row) => [row.id, row.requesterId]));
   }
 
   /**
