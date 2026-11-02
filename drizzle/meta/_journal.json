@@ -127,6 +127,20 @@
       "when": 1793514223447,
       "tag": "0017_story",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793586493762,
+      "tag": "0018_group_lineups",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793586535501,
+      "tag": "0019_drop_device_display_columns",
+      "breakpoints": true
     }
   ]
 }

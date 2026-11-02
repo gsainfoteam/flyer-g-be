@@ -12,7 +12,7 @@ export class ErrorResponseDto {
 | 401 | UNAUTHENTICATED |
 | 403 | FORBIDDEN |
 | 404 | NOT_FOUND |
-| 409 | CONFLICT, ALREADY_SUBMITTED, NOT_RESUBMITTABLE |
+| 409 | CONFLICT, ALREADY_SUBMITTED, NOT_RESUBMITTABLE, IN_USE |
 | 413 | PAYLOAD_TOO_LARGE |
 | 422 | VALIDATION_FAILED, IDEMPOTENCY_KEY_REUSED |
 | 429 | RATE_LIMITED, DAILY_LIMIT_EXCEEDED |
@@ -49,7 +49,8 @@ export class ErrorResponseDto {
 
 | code | details |
 |---|---|
-| DAILY_LIMIT_EXCEEDED | \`{ type: 신청 종류, limit: 하루 한도 }\` |`,
+| DAILY_LIMIT_EXCEEDED | \`{ type: 신청 종류, limit: 하루 한도 }\` |
+| IN_USE (그룹 삭제) | \`{ deviceIds: 그룹에 속하거나 그룹 편성을 따르는 기기, submissionCount: 그룹을 대상으로 고른 신청 수 }\` |`,
     type: 'object',
     additionalProperties: true,
     example: { type: 'EVENT_BANNER', limit: 3 },

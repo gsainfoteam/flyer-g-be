@@ -5,11 +5,18 @@ import { eq, inArray } from 'drizzle-orm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { DB_CONNECTION, type Database } from '../src/db/index.js';
-import { auditLogs, devices, submissions, users } from '../src/db/schema.js';
+import {
+  auditLogs,
+  devices,
+  submissions,
+  targetGroups,
+  users,
+} from '../src/db/schema.js';
 import { StorageService } from '../src/storage/storage.service.js';
 import { MemoryStorage } from './helpers/memory-storage.js';
 import {
   createReadyAsset,
+  createTestGroup,
   createTestUser,
   type TestUser,
 } from './helpers/test-user.js';
@@ -19,6 +26,7 @@ const HOUR = 3600_000;
 describe('감사 로그 조회 (e2e)', () => {
   let app: INestApplication;
   let db: Database;
+  let groupId: string;
   let requester: TestUser;
   let other: TestUser;
   let reviewer: TestUser;
@@ -79,6 +87,9 @@ describe('감사 로그 조회 (e2e)', () => {
         ]),
       );
     await db.delete(devices).where(eq(devices.id, deviceId));
+    if (groupId) {
+      await db.delete(targetGroups).where(eq(targetGroups.id, groupId));
+    }
     await requester.remove();
     await other.remove();
     await reviewer.remove();
@@ -281,9 +292,11 @@ describe('감사 로그 조회 (e2e)', () => {
 
   it('대상의 현재 제목·기기 이름을 targetTitle로 주고, 대상이 없으면 null', async () => {
     const now = new Date();
+    groupId = await createTestGroup(app);
     await db.insert(devices).values({
       id: deviceId,
       name: '학생회관 1층 TV',
+      programGroupId: groupId,
       tokenHash: randomUUID().replaceAll('-', '').padEnd(64, '0'),
       tokenIssuedAt: now,
       createdAt: now,

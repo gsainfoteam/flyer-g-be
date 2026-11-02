@@ -73,7 +73,7 @@ export class TargetGroupsController {
   @ApiOperation({
     summary: '대상 위치 그룹 추가',
     description:
-      'ID는 서버가 정한다(grp_xxx). 새 그룹은 숨기지 않은 상태, deviceCount 0으로 만들어진다. 감사 로그 GROUP_CREATED',
+      'ID는 서버가 정한다(grp_xxx). 새 그룹은 숨기지 않은 상태, deviceCount 0으로 만들어진다. 기본 편성(기본 설정과 포스터 블록 하나)이 같이 생긴다. 감사 로그 GROUP_CREATED',
   })
   @ApiCreatedResponse({ type: TargetGroupDto })
   @ApiForbiddenResponse(SUPER_ADMIN_ONLY)
@@ -113,7 +113,8 @@ export class TargetGroupsController {
   @ApiOperation({
     summary: '대상 위치 그룹 삭제',
     description: `오타로 만든 그룹을 지우는 용도. 어떤 기기의 groupIds에도, 어떤 신청의 targetGroupIds에도
-(취소·종료된 신청 포함) 들어 있지 않아야 지울 수 있다. 쓰는 곳이 있으면 409이고, 그때는 숨김을 쓴다.
+(취소·종료된 신청 포함) 들어 있지 않고, 이 그룹 편성을 따르는 기기도 없어야 지울 수 있다.
+쓰는 곳이 있으면 409 \`IN_USE\`이고, 그때는 숨김을 쓴다. 그룹 편성은 그룹과 같이 지워진다.
 감사 로그 GROUP_DELETED`,
   })
   @ApiParam(ID_PARAM)
@@ -121,7 +122,8 @@ export class TargetGroupsController {
   @ApiForbiddenResponse(SUPER_ADMIN_ONLY)
   @ApiNotFoundResponse(NOT_FOUND_DOC)
   @ApiConflictResponse({
-    description: '기기나 신청이 쓰고 있는 그룹 (code CONFLICT)',
+    description:
+      '기기나 신청이 쓰고 있는 그룹 (code IN_USE). details: { deviceIds: 그룹에 속하거나 이 그룹 편성을 따르는 기기 ID, submissionCount: 이 그룹을 대상으로 고른 신청 수(끝난 신청 포함) }',
     type: ErrorResponseDto,
   })
   remove(

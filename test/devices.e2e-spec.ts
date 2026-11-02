@@ -6,6 +6,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { DB_CONNECTION, type Database } from '../src/db/index.js';
 import { auditLogs, devices, targetGroups } from '../src/db/schema.js';
+import { createDefaultLineup } from '../src/lineups/lineups.service.js';
 import {
   createTestUser,
   type TestUser,
@@ -19,6 +20,7 @@ describe('기기 등록과 인증 (e2e)', () => {
   let reviewer: TestUser;
   let submitter: TestUser;
   const groupId = uniqueSlug('grp');
+  const otherGroupId = uniqueSlug('grp');
   const hiddenGroupId = uniqueSlug('grp');
   // 기기에 연결한 뒤 숨긴다
   const laterHiddenGroupId = uniqueSlug('grp');
@@ -36,9 +38,16 @@ describe('기기 등록과 인증 (e2e)', () => {
 
     await db.insert(targetGroups).values([
       { id: groupId, name: `E2E 기기 그룹 ${groupId}` },
+      { id: otherGroupId, name: `E2E 다른 그룹 ${otherGroupId}` },
       { id: hiddenGroupId, name: `E2E 숨김 ${hiddenGroupId}`, isActive: false },
       { id: laterHiddenGroupId, name: `E2E 나중에 숨김 ${laterHiddenGroupId}` },
     ]);
+    // API로 만든 그룹처럼 기본 편성을 둔다
+    await db.transaction(async (tx) => {
+      for (const id of [groupId, otherGroupId]) {
+        await createDefaultLineup(tx, id, new Date());
+      }
+    });
     admin = await createTestUser(app, { roles: ['SUPER_ADMIN'] });
     reviewer = await createTestUser(app, { roles: ['REVIEWER'] });
     submitter = await createTestUser(app);
@@ -54,7 +63,12 @@ describe('기기 등록과 인증 (e2e)', () => {
     await db
       .delete(targetGroups)
       .where(
-        inArray(targetGroups.id, [groupId, hiddenGroupId, laterHiddenGroupId]),
+        inArray(targetGroups.id, [
+          groupId,
+          otherGroupId,
+          hiddenGroupId,
+          laterHiddenGroupId,
+        ]),
       );
     for (const user of [admin, reviewer, submitter]) {
       await user.remove();
@@ -102,6 +116,8 @@ describe('기기 등록과 인증 (e2e)', () => {
         name: 'E2E 로비 TV',
         location: 'A동 1층',
         groupIds: [groupId],
+        programGroupId: groupId,
+        overrides: { settings: {}, blocks: {} },
         orientation: 'LANDSCAPE',
         resolution: null,
         lastSeenAt: null,
@@ -130,23 +146,61 @@ describe('기기 등록과 인증 (e2e)', () => {
       }
     });
 
-    it('없거나 숨긴 그룹, 범위를 벗어난 설정은 422', async () => {
+    it('없거나 숨긴 그룹, 편성 그룹이 없거나 위치 그룹 밖이면 422', async () => {
+      const post = (body: object) =>
+        request(server())
+          .post('/signage/devices')
+          .set('Authorization', admin.authHeader)
+          .send({ name: 'x', ...body })
+          .expect(422);
+
+      const noGroup = await post({});
+      expect(noGroup.body.fields).toEqual({
+        programGroupId:
+          '편성 그룹을 고르세요. 위치 그룹(groupIds)이 하나 이상 있어야 합니다.',
+      });
+
+      const outside = await post({
+        groupIds: [groupId],
+        programGroupId: otherGroupId,
+      });
+      expect(outside.body.fields).toEqual({
+        programGroupId: '편성 그룹은 위치 그룹(groupIds) 중 하나여야 합니다.',
+      });
+
+      const groups = await post({ groupIds: [hiddenGroupId, 'grp_nope'] });
+      expect(groups.body.fields.groupIds).toContain(hiddenGroupId);
+    });
+
+    it('그룹 편성으로 옮긴 화면 설정 필드는 422', async () => {
       const res = await request(server())
         .post('/signage/devices')
         .set('Authorization', admin.authHeader)
-        .send({ name: 'x', rotationSeconds: 3, refreshAfterSeconds: 600 })
+        .send({
+          name: 'x',
+          groupIds: [groupId],
+          layout: 'STRIP',
+          rotationSeconds: 20,
+          refreshAfterSeconds: 60,
+        })
         .expect(422);
+      const message =
+        '화면 설정은 그룹 편성(settings)이나 기기 예외(overrides.settings)로 바꿉니다.';
       expect(res.body.fields).toEqual({
-        rotationSeconds: '전환 간격은 5초 이상이어야 합니다.',
-        refreshAfterSeconds: '갱신 주기는 300초 이하여야 합니다.',
+        layout: message,
+        rotationSeconds: message,
+        refreshAfterSeconds: message,
       });
+    });
 
-      const groups = await request(server())
+    it('programGroupId를 생략하면 groupIds의 첫 번째다', async () => {
+      const res = await request(server())
         .post('/signage/devices')
         .set('Authorization', admin.authHeader)
-        .send({ name: 'x', groupIds: [hiddenGroupId, 'grp_nope'] })
-        .expect(422);
-      expect(groups.body.fields.groupIds).toContain(hiddenGroupId);
+        .send({ name: 'E2E 두 그룹', groupIds: [otherGroupId, groupId] })
+        .expect(201);
+      createdDeviceIds.push(res.body.id);
+      expect(res.body.programGroupId).toBe(otherGroupId);
     });
   });
 
@@ -281,32 +335,83 @@ describe('기기 등록과 인증 (e2e)', () => {
       expect(await countOf()).toBe(before + 1);
 
       const res = await patch(id, {
-        layout: 'STRIP',
-        rotationSeconds: 20,
-        groupIds: [],
+        name: 'E2E 옮긴 TV',
+        groupIds: [otherGroupId],
+        programGroupId: otherGroupId,
       }).expect(200);
       expect(res.body).toMatchObject({
-        name: 'E2E 로비 TV',
-        groupIds: [],
-        layout: { type: 'STRIP', rotationSeconds: 20 },
+        name: 'E2E 옮긴 TV',
+        groupIds: [otherGroupId],
+        programGroupId: otherGroupId,
       });
       expect(await countOf()).toBe(before);
+
+      // 편성 그룹을 빼려면 programGroupId도 같이 바꿔야 한다
+      const invalid = await patch(id, { groupIds: [groupId] }).expect(422);
+      expect(invalid.body.fields).toEqual({
+        programGroupId: '편성 그룹은 위치 그룹(groupIds) 중 하나여야 합니다.',
+      });
     });
 
-    it('예전 레이아웃 값(FOUR_GRID·SINGLE)도 받아서 새 값으로 저장한다', async () => {
-      const { id } = await register({ layout: 'SINGLE' });
-      const [row] = await db
-        .select({ layout: devices.layout })
-        .from(devices)
-        .where(eq(devices.id, id));
-      expect(row.layout).toBe('STRIP');
+    it('기기 예외를 저장하고, 편성 그룹에 없는 블록 예외는 지운다', async () => {
+      const { id } = await register();
+      const lineup = await request(server())
+        .get(`/signage/target-groups/${groupId}/lineup`)
+        .set('Authorization', admin.authHeader)
+        .expect(200);
+      const blockId = lineup.body.blocks[0].id as string;
 
-      const res = await patch(id, { layout: 'FOUR_GRID' }).expect(200);
-      expect(res.body.layout.type).toBe('WALL');
+      const res = await patch(id, {
+        overrides: {
+          settings: { posterLayout: 'STRIP', rotationSeconds: 20 },
+          blocks: {
+            [blockId]: { durationSeconds: 30 },
+            blk_gone: { enabled: false },
+          },
+        },
+      }).expect(200);
+      expect(res.body.overrides).toEqual({
+        settings: { posterLayout: 'STRIP', rotationSeconds: 20 },
+        blocks: { [blockId]: { durationSeconds: 30 } },
+      });
+      // 옛 필드는 실제 편성(그룹 설정 + 예외)에서 계산한 읽기 전용 값이다
+      expect(res.body.layout).toEqual({ type: 'STRIP', rotationSeconds: 20 });
+      expect(res.body.refreshAfterSeconds).toBe(60);
 
-      const invalid = await patch(id, { layout: 'GRID' }).expect(422);
+      const invalid = await patch(id, {
+        overrides: {
+          settings: { rotationSeconds: 3, quietHours: [{ start: '25:00' }] },
+          extra: true,
+        },
+      }).expect(422);
       expect(invalid.body.fields).toEqual({
-        layout: '레이아웃이 올바르지 않습니다.',
+        'overrides.settings.rotationSeconds':
+          '전환 간격은 5초 이상이어야 합니다.',
+        'overrides.settings.quietHours.0.start':
+          '시각은 HH:mm 형식이어야 합니다.',
+        'overrides.settings.quietHours.0.end':
+          '시각은 HH:mm 형식이어야 합니다.',
+        overrides: '알 수 없는 항목이 있습니다: extra',
+      });
+
+      const missingProgram = await patch(id, {
+        overrides: {
+          settings: { infoBar: [{ item: 'WEATHER', programId: 'prg_nope' }] },
+        },
+      }).expect(422);
+      expect(missingProgram.body.fields).toEqual({
+        'overrides.settings.infoBar.0.programId': '없는 운영 컨텐츠입니다.',
+      });
+
+      const old = await patch(id, { layout: 'STRIP' }).expect(422);
+      expect(Object.keys(old.body.fields)).toEqual(['layout']);
+
+      // 예외를 비우면 그룹 설정으로 돌아간다
+      const cleared = await patch(id, { overrides: {} }).expect(200);
+      expect(cleared.body.overrides).toEqual({ settings: {}, blocks: {} });
+      expect(cleared.body.layout).toEqual({
+        type: 'WALL',
+        rotationSeconds: 10,
       });
     });
 
@@ -326,6 +431,7 @@ describe('기기 등록과 인증 (e2e)', () => {
       expect(kept.body.groupIds).toEqual([groupId, laterHiddenGroupId].sort());
       const narrowed = await patch(id, {
         groupIds: [laterHiddenGroupId],
+        programGroupId: laterHiddenGroupId,
       }).expect(200);
       expect(narrowed.body.groupIds).toEqual([laterHiddenGroupId]);
 

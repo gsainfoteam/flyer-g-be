@@ -1,17 +1,18 @@
 import type { AddressInfo } from 'node:net';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import request from 'supertest';
 import { WebSocket } from 'ws';
 import { AppModule } from '../src/app.module.js';
 import { RELAY_LIMITS } from '../src/games/game-relay.js';
 import { DB_CONNECTION, type Database } from '../src/db/index.js';
-import { devices } from '../src/db/schema.js';
+import { devices, targetGroups } from '../src/db/schema.js';
 import {
   generateDeviceToken,
   hashDeviceToken,
 } from '../src/devices/auth/device-token.js';
+import { createTestGroup } from './helpers/test-user.js';
 
 const ORIGIN = 'http://localhost:5173';
 
@@ -38,6 +39,7 @@ function closedWith(socket: WebSocket): Promise<number> {
 describe('게임 중계 WebSocket (e2e)', () => {
   let app: INestApplication;
   let db: Database;
+  let groupId: string;
   let base: string;
   const token = generateDeviceToken();
   const otherToken = generateDeviceToken();
@@ -62,11 +64,13 @@ describe('게임 중계 WebSocket (e2e)', () => {
     db = app.get<Database>(DB_CONNECTION);
 
     const now = new Date();
+    groupId = await createTestGroup(app);
     const rows = await db
       .insert(devices)
       .values([
         {
           name: 'E2E 게임 TV',
+          programGroupId: groupId,
           tokenHash: hashDeviceToken(token),
           tokenIssuedAt: now,
           createdAt: now,
@@ -74,6 +78,7 @@ describe('게임 중계 WebSocket (e2e)', () => {
         },
         {
           name: 'E2E 다른 TV',
+          programGroupId: groupId,
           tokenHash: hashDeviceToken(otherToken),
           tokenIssuedAt: now,
           createdAt: now,
@@ -90,6 +95,7 @@ describe('게임 중계 WebSocket (e2e)', () => {
     await db
       .delete(devices)
       .where(inArray(devices.id, [deviceId, otherDeviceId]));
+    await db.delete(targetGroups).where(eq(targetGroups.id, groupId));
     await app.close();
   });
 

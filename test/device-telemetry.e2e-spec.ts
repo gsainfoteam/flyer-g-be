@@ -5,8 +5,17 @@ import { eq, inArray } from 'drizzle-orm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { DB_CONNECTION, type Database } from '../src/db/index.js';
-import { auditLogs, devices, playEvents } from '../src/db/schema.js';
-import { createTestUser, type TestUser } from './helpers/test-user.js';
+import {
+  auditLogs,
+  devices,
+  playEvents,
+  targetGroups,
+} from '../src/db/schema.js';
+import {
+  createTestGroup,
+  createTestUser,
+  type TestUser,
+} from './helpers/test-user.js';
 
 type RegisteredDevice = { id: string; token: string };
 
@@ -17,6 +26,7 @@ describe('기기 런타임 (e2e)', () => {
   let tv: RegisteredDevice;
   let otherTv: RegisteredDevice;
   const deviceIds: string[] = [];
+  let groupId: string;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -29,6 +39,7 @@ describe('기기 런타임 (e2e)', () => {
     db = app.get<Database>(DB_CONNECTION);
 
     admin = await createTestUser(app, { roles: ['SUPER_ADMIN'] });
+    groupId = await createTestGroup(app);
     tv = await register();
     otherTv = await register();
   });
@@ -37,6 +48,7 @@ describe('기기 런타임 (e2e)', () => {
     // 기기를 지우면 노출 이벤트도 함께 지워진다.
     await db.delete(auditLogs).where(inArray(auditLogs.targetId, deviceIds));
     await db.delete(devices).where(inArray(devices.id, deviceIds));
+    await db.delete(targetGroups).where(eq(targetGroups.id, groupId));
     await admin.remove();
     await app.close();
   });
@@ -45,7 +57,7 @@ describe('기기 런타임 (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/signage/devices')
       .set('Authorization', admin.authHeader)
-      .send({ name: 'E2E 런타임 TV' })
+      .send({ name: 'E2E 런타임 TV', groupIds: [groupId] })
       .expect(201);
     deviceIds.push(res.body.id);
     return { id: res.body.id, token: res.body.token };

@@ -24,6 +24,8 @@ export const AUDIT_ACTIONS = [
   'GROUP_CREATED',
   'GROUP_UPDATED',
   'GROUP_DELETED',
+  // 그룹 편성 저장. target은 GROUP이다
+  'LINEUP_UPDATED',
   'USER_ROLE_GRANTED',
   'USER_ROLE_REVOKED',
 ] as const;

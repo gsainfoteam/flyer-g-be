@@ -8,11 +8,13 @@ import {
   auditLogs,
   reviews,
   submissions,
+  targetGroups,
   userRoles,
   users,
   type GrantedRole,
   type User,
 } from '../../src/db/schema.js';
+import { createDefaultLineup } from '../../src/lineups/lineups.service.js';
 
 export type TestUser = {
   user: User;
@@ -72,6 +74,23 @@ export async function createTestUser(
 /** 다른 테스트·로컬 데이터와 겹치지 않는 slug ID */
 export function uniqueSlug(prefix: string): string {
   return `${prefix}_e2e_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+}
+
+/**
+ * API로 만든 것처럼 기본 편성까지 둔 위치 그룹. DB에 기기를 바로 넣을 때 편성 그룹으로 쓴다.
+ * 그룹을 쓰는 기기를 먼저 지운 뒤 targetGroups에서 지운다(편성은 같이 지워진다).
+ */
+export async function createTestGroup(
+  app: INestApplication,
+  name = 'E2E 그룹',
+): Promise<string> {
+  const db = app.get<Database>(DB_CONNECTION);
+  const id = uniqueSlug('grp');
+  await db.transaction(async (tx) => {
+    await tx.insert(targetGroups).values({ id, name: `${name} ${id}` });
+    await createDefaultLineup(tx, id, new Date());
+  });
+  return id;
 }
 
 /** S3 없이 쓸 수 있는, 업로드·검증이 끝난 asset */
