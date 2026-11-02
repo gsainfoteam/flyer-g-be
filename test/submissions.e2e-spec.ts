@@ -263,10 +263,27 @@ describe('게시 신청 (e2e)', () => {
       expect(rest.body.fields).toEqual({
         categoryId: '선택할 수 없는 카테고리입니다.',
         detailUrl: 'https:// 로 시작하는 주소만 쓸 수 있습니다.',
-        startAt: '게시 시작은 신청 시각으로부터 24시간 이후여야 합니다.',
         endAt: '게시 기간은 최대 3개월입니다.',
         targetGroupIds: `선택할 수 없는 대상 위치가 있습니다: ${hiddenGroupId}`,
       });
+    });
+
+    it('시작 시각이 이미 지났어도 신청할 수 있다', async () => {
+      const res = await create(
+        validBody({ startAt: fromNow(-2 * HOUR), endAt: fromNow(48 * HOUR) }),
+      ).expect(201);
+      expect(res.body).toMatchObject({
+        type: 'POSTER',
+        status: 'PENDING_REVIEW',
+      });
+    });
+
+    it('type을 비우면 POSTER, 모르는 type은 422', async () => {
+      const poster = await create(validBody({ type: 'POSTER' })).expect(201);
+      expect(poster.body.type).toBe('POSTER');
+
+      const res = await create(validBody({ type: 'NOPE' })).expect(422);
+      expect(res.body.fields).toEqual({ type: '알 수 없는 신청 종류입니다.' });
     });
 
     it('offset 없는 시각은 거절한다', async () => {
@@ -381,6 +398,17 @@ describe('게시 신청 (e2e)', () => {
       expect(archived.body.totalCount).toBe(1);
     });
 
+    it('키를 반복한 필터도 쉼표 구분과 같게 읽는다', async () => {
+      const res = await get(
+        '/signage/submissions?statuses=APPROVED&statuses=ARCHIVED',
+        lister,
+      ).expect(200);
+      expect(res.body.items.map((s: { id: string }) => s.id)).toEqual([
+        ids[1],
+        ids[0],
+      ]);
+    });
+
     it('cursor로 다음 페이지를 이어 받는다', async () => {
       const first = await get(
         '/signage/submissions?statuses=PENDING_REVIEW,APPROVED,ARCHIVED&limit=2&cursor=',
@@ -408,8 +436,20 @@ describe('게시 신청 (e2e)', () => {
       expect(res.body.totalCount).toBeGreaterThanOrEqual(2);
     });
 
-    it('알 수 없는 상태 필터는 422', async () => {
+    it('종류 복수 필터', async () => {
+      const posters = await get(
+        '/signage/submissions?type=POSTER',
+        lister,
+      ).expect(200);
+      expect(posters.body.totalCount).toBe(2);
+    });
+
+    it('알 수 없는 상태·종류 필터는 422', async () => {
       await get('/signage/submissions?statuses=NOPE', lister).expect(422);
+      await get('/signage/submissions?type=POSTER,NOPE', lister).expect(422);
+      await get('/signage/submissions?type=POSTER&type=NOPE', lister).expect(
+        422,
+      );
     });
 
     it('상세는 본인과 검토자만, 나머지는 404', async () => {
@@ -438,6 +478,17 @@ describe('게시 신청 (e2e)', () => {
           APPROVED: 1,
           ARCHIVED: 1,
           CANCELED: 0,
+        },
+      });
+      // 검토 대기는 ids[2] 하나다
+      const [pending] = await db
+        .select({ submittedAt: submissions.submittedAt })
+        .from(submissions)
+        .where(eq(submissions.id, ids[2]));
+      expect(res.body.byType).toEqual({
+        POSTER: {
+          pendingReview: 1,
+          oldestSubmittedAt: pending.submittedAt!.toISOString(),
         },
       });
 
@@ -548,9 +599,20 @@ describe('게시 신청 (e2e)', () => {
       const { id } = await fresh();
       const res = await patch(id, {
         version: 1,
-        startAt: fromNow(HOUR),
+        endAt: fromNow(200 * 24 * HOUR),
       }).expect(422);
-      expect(res.body.fields).toHaveProperty('startAt');
+      expect(res.body.fields).toEqual({
+        endAt: '게시 기간은 최대 3개월입니다.',
+      });
+    });
+
+    it('시작 시각을 지금 직전으로 당길 수 있다', async () => {
+      const { id } = await fresh();
+      const res = await patch(id, {
+        version: 1,
+        startAt: fromNow(-HOUR),
+      }).expect(200);
+      expect(res.body.startAt).toEqual(expect.any(String));
     });
   });
 

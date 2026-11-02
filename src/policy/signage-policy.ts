@@ -40,8 +40,6 @@ export const SIGNAGE_POLICY = {
   titleMaxLength: 80,
   /** 최대 게시 기간(개월, Asia/Seoul 달력 기준) */
   maxPublishMonths: 3,
-  /** 게시 시작 전 최소 신청 시간(시간). 검토할 시간을 확보한다 */
-  minLeadTimeHours: 24,
   /** 상세 링크(QR)로 허용하는 호스트. HTTPS만 허용한다 */
   allowedDetailUrlHosts: ['ziggle.gistory.me'],
 } as const;

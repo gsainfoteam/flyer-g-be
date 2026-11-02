@@ -80,7 +80,7 @@ export class SubmissionsController {
 **검증** (기준은 \`GET /signage/config\`)
 - 제목: 앞뒤 공백 제거 후 1~80자
 - 포스터: 본인이 올려 complete까지 끝낸 asset
-- 기간: 시작은 지금부터 24시간 이후, 종료는 시작보다 뒤, 최대 3개월(서울 달력)
+- 기간: 종료는 시작보다 뒤이고 아직 지나지 않아야 한다. 최대 3개월(서울 달력). 시작 시각은 제한하지 않는다. 이미 지났으면 승인하는 즉시 게시된다
 - 상세 링크(선택): 허용된 호스트의 HTTPS. Ziggle 공지 주소(\`/notice/{id}\`)면 공지 ID를 뽑아 **공지 하나에 신청 하나**를 지킨다. 끝난 신청(취소·종료·보관)은 세지 않는다
 - 대상 위치(선택): 숨기지 않은 그룹. 비우면 전체 기기`,
   })
@@ -102,7 +102,7 @@ export class SubmissionsController {
   @ApiOperation({
     summary: '신청 목록',
     description:
-      '최신 신청부터. `statuses`를 비우면 ARCHIVED를 뺀 전체다. 표시 상태 판정은 응답의 `serverTime`으로 한다.',
+      '최신 신청부터. `statuses`를 비우면 ARCHIVED를 뺀 전체다. `type`으로 종류를 거를 수 있다. 표시 상태 판정은 응답의 `serverTime`으로 한다.',
   })
   @ApiPageResponse(SubmissionDto)
   @ApiForbiddenResponse({
@@ -110,7 +110,7 @@ export class SubmissionsController {
     type: ErrorResponseDto,
   })
   @ApiUnprocessableEntityResponse({
-    description: '알 수 없는 scope·status, 잘못된 limit',
+    description: '알 수 없는 scope·status·type, 잘못된 limit',
     type: ErrorResponseDto,
   })
   list(
@@ -124,7 +124,7 @@ export class SubmissionsController {
   @ApiOperation({
     summary: '운영 요약',
     description:
-      '대시보드 수치. 목록을 세지 않고 서버가 한 번에 계산한다. 게시 중·예약·종료는 승인 건의 기간으로 판정하고, byStatus는 저장된 상태 그대로 센다.',
+      '대시보드 수치. 목록을 세지 않고 서버가 한 번에 계산한다. 게시 중·예약·종료는 승인 건의 기간으로 판정하고, byStatus는 저장된 상태 그대로 센다. byType은 종류별 검토 대기 건수와 가장 오래 기다린 건의 submittedAt이다.',
   })
   @ApiOkResponse({ type: SubmissionSummaryDto })
   @ApiForbiddenResponse({
@@ -189,7 +189,7 @@ export class SubmissionsController {
   @ApiOperation({
     summary: '재검토 요청',
     description:
-      '반려(REJECTED)·중단(SUSPENDED)된 신청을 다시 검토 대기(PENDING_REVIEW)로 보낸다. 기간 규칙을 지금 시각으로 다시 검사하므로, 시작이 지났으면 먼저 기간을 고친다.',
+      '반려(REJECTED)·중단(SUSPENDED)된 신청을 다시 검토 대기(PENDING_REVIEW)로 보낸다. 기간 규칙을 지금 시각으로 다시 검사하므로, 종료 시각이 지났거나 최대 게시 기간을 넘으면 먼저 기간을 고친다.',
   })
   @ApiParam(ID_PARAM)
   @ApiOkResponse({ type: SubmissionDetailDto })

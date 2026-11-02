@@ -4,6 +4,7 @@ import {
   ArrayMaxSize,
   ArrayUnique,
   IsArray,
+  IsIn,
   IsInt,
   IsISO8601,
   IsNotEmpty,
@@ -15,6 +16,7 @@ import {
   Min,
   ValidateIf,
 } from 'class-validator';
+import { submissionTypeEnum, type SubmissionType } from '../../db/schema.js';
 import { SIGNAGE_POLICY } from '../../policy/signage-policy.js';
 
 const TITLE_MAX_LENGTH = SIGNAGE_POLICY.titleMaxLength;
@@ -101,6 +103,17 @@ class SubmissionDisplayFields {
 }
 
 export class CreateSubmissionDto extends SubmissionDisplayFields {
+  @ApiPropertyOptional({
+    description: '신청 종류. 비우면 POSTER',
+    enum: submissionTypeEnum.enumValues,
+    default: 'POSTER',
+  })
+  @IsOptional()
+  @IsIn(submissionTypeEnum.enumValues, {
+    message: '알 수 없는 신청 종류입니다.',
+  })
+  type?: SubmissionType;
+
   @ApiProperty({
     description: `제목. 앞뒤 공백을 지운 뒤 1~${TITLE_MAX_LENGTH}자`,
     example: '겨울 정기 공연 〈한밤의 물리학〉',

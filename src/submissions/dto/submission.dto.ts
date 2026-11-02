@@ -2,8 +2,10 @@ import { ApiProperty } from '@nestjs/swagger';
 import {
   reviewDecisionEnum,
   submissionStatusEnum,
+  submissionTypeEnum,
   type ReviewDecision,
   type SubmissionStatus,
+  type SubmissionType,
 } from '../../db/schema.js';
 
 const STATUSES = submissionStatusEnum.enumValues;
@@ -30,8 +32,12 @@ export class SubmissionDto {
   })
   requesterName: string;
 
-  @ApiProperty({ enum: ['POSTER'], example: 'POSTER' })
-  type: 'POSTER';
+  @ApiProperty({
+    description: '신청 종류',
+    enum: submissionTypeEnum.enumValues,
+    example: 'POSTER',
+  })
+  type: SubmissionType;
 
   @ApiProperty({ example: '겨울 정기 공연 〈한밤의 물리학〉' })
   title: string;
@@ -200,6 +206,29 @@ export class SubmissionStatusCountsDto {
   @ApiProperty() ARCHIVED: number;
 }
 
+export class SubmissionTypeSummaryDto {
+  @ApiProperty({ description: '이 종류의 검토 대기 건수', example: 3 })
+  pendingReview: number;
+
+  @ApiProperty({
+    description:
+      '이 종류의 검토 대기 중 가장 오래 기다린 건의 submittedAt. 대기 건이 없으면 null',
+    type: String,
+    nullable: true,
+    example: '2026-07-28T02:10:00.000Z',
+  })
+  oldestSubmittedAt: string | null;
+}
+
+/** 종류마다 항목 하나. 종류를 더하면 여기에도 속성을 더해야 컴파일된다 */
+export class SubmissionTypeSummariesDto implements Record<
+  SubmissionType,
+  SubmissionTypeSummaryDto
+> {
+  @ApiProperty({ type: SubmissionTypeSummaryDto })
+  POSTER: SubmissionTypeSummaryDto;
+}
+
 export class SubmissionSummaryDto {
   @ApiProperty({
     description: '집계 기준 시각. 아래 수치는 이 시각 기준이다',
@@ -233,4 +262,10 @@ export class SubmissionSummaryDto {
     type: SubmissionStatusCountsDto,
   })
   byStatus: SubmissionStatusCountsDto;
+
+  @ApiProperty({
+    description: '종류별 검토 대기. 심사 화면의 종류 탭 배지와 대기 시간용',
+    type: SubmissionTypeSummariesDto,
+  })
+  byType: SubmissionTypeSummariesDto;
 }

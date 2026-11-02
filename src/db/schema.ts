@@ -224,10 +224,19 @@ export const submissionStatusEnum = pgEnum('submission_status', [
 
 export type SubmissionStatus = (typeof submissionStatusEnum.enumValues)[number];
 
+/**
+ * 심사받는 컨텐츠의 종류. 종류마다 다른 규칙은 src/submissions/kinds/의 정의 파일에 둔다.
+ * 값은 그 종류의 정의가 생길 때 더한다.
+ */
+export const submissionTypeEnum = pgEnum('submission_type', ['POSTER']);
+
+export type SubmissionType = (typeof submissionTypeEnum.enumValues)[number];
+
 export const submissions = pgTable(
   'submissions',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    type: submissionTypeEnum('type').notNull().default('POSTER'),
     requesterId: uuid('requester_id')
       .notNull()
       .references(() => users.id),

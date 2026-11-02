@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import type { SubmissionType } from '../../db/schema.js';
 import { ASSET_MIME_TYPES, type AssetMimeType } from '../signage-policy.js';
 
 export class SignageConfigDto {
@@ -26,10 +27,20 @@ export class SignageConfigDto {
 
   @ApiProperty({
     description:
-      '게시 시작 전 최소 신청 시간(시간). 시작 시각은 신청 시각에서 이 시간 이상 뒤여야 한다. 0이면 제한 없음',
-    example: 24,
+      '**지원 중단.** 예전의 "게시 24시간 전 신청" 규칙. 규칙이 없어져 항상 0이고, 정리 배포에서 필드를 지운다. 읽지 않는다',
+    example: 0,
+    deprecated: true,
   })
-  minLeadTimeHours: number;
+  minLeadTimeHours: 0;
+
+  @ApiProperty({
+    description:
+      '사용자당 서울 하루 신청 한도(종류 → 건수). 한도가 있는 종류만 들어 있다. 넘으면 429 DAILY_LIMIT_EXCEEDED',
+    type: 'object',
+    additionalProperties: { type: 'integer' },
+    example: {},
+  })
+  dailySubmissionLimits: Partial<Record<SubmissionType, number>>;
 
   @ApiProperty({
     description:

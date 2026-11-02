@@ -2,12 +2,11 @@ import {
   canCancel,
   hasStartedPublishing,
   parseDetailUrl,
-  validateSchedule,
+  validatePeriod,
 } from './submission-rules.js';
 
 const NOW = new Date('2026-07-29T06:30:00.000Z');
 const hours = (h: number) => new Date(NOW.getTime() + h * 3600_000);
-const kst = (iso: string) => new Date(`${iso}+09:00`);
 
 describe('parseDetailUrl', () => {
   it('Ziggle 공지 주소에서 공지 ID를 뽑는다', () => {
@@ -64,37 +63,25 @@ describe('parseDetailUrl', () => {
   });
 });
 
-describe('validateSchedule', () => {
-  it('규칙을 지키면 오류가 없다', () => {
-    expect(validateSchedule(hours(48), hours(24 * 9), NOW)).toEqual({});
+describe('validatePeriod', () => {
+  it('종료가 시작보다 뒤이고 아직 지나지 않았으면 오류가 없다', () => {
+    expect(validatePeriod(hours(48), hours(24 * 9), NOW)).toEqual({});
   });
 
-  it('시작이 최소 사전 신청 시간(24시간)보다 이르면 startAt 오류', () => {
-    expect(validateSchedule(hours(23), hours(100), NOW)).toEqual({
-      startAt: '게시 시작은 신청 시각으로부터 24시간 이후여야 합니다.',
-    });
-    expect(validateSchedule(hours(24), hours(100), NOW)).toEqual({});
+  it('시작 시각은 제한하지 않는다 (이미 지났어도 된다)', () => {
+    expect(validatePeriod(hours(1), hours(100), NOW)).toEqual({});
+    expect(validatePeriod(hours(-5), hours(100), NOW)).toEqual({});
   });
 
   it('종료가 시작보다 앞서면 endAt 오류', () => {
-    expect(validateSchedule(hours(48), hours(48), NOW)).toMatchObject({
+    expect(validatePeriod(hours(48), hours(48), NOW)).toEqual({
       endAt: '종료 시각은 시작 시각보다 뒤여야 합니다.',
     });
   });
 
   it('종료가 이미 지났으면 endAt 오류', () => {
-    expect(validateSchedule(hours(-48), hours(-1), NOW)).toMatchObject({
+    expect(validatePeriod(hours(-48), hours(-1), NOW)).toEqual({
       endAt: '종료 시각이 이미 지났습니다.',
-    });
-  });
-
-  it('최대 게시 기간(3개월, 서울 달력)을 넘으면 endAt 오류', () => {
-    const start = kst('2026-11-30T09:00:00');
-    expect(validateSchedule(start, kst('2027-02-28T09:00:00'), NOW)).toEqual(
-      {},
-    );
-    expect(validateSchedule(start, kst('2027-02-28T09:00:01'), NOW)).toEqual({
-      endAt: '게시 기간은 최대 3개월입니다.',
     });
   });
 });

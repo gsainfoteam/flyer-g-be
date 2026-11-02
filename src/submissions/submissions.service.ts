@@ -33,12 +33,14 @@ import {
   reviews,
   submissionStatusEnum,
   submissionTargetGroups,
+  submissionTypeEnum,
   submissions,
   users,
   type Asset,
   type ReviewDecision,
   type Submission,
   type SubmissionStatus,
+  type SubmissionType,
 } from '../db/schema.js';
 import { TargetGroupsService } from '../target-groups/target-groups.service.js';
 import type {
@@ -54,7 +56,9 @@ import type {
   SubmissionDetailDto,
   SubmissionDto,
   SubmissionSummaryDto,
+  SubmissionTypeSummaryDto,
 } from './dto/submission.dto.js';
+import { kindOf } from './kinds/index.js';
 import {
   canCancel,
   EDITABLE_STATUSES,
@@ -62,7 +66,6 @@ import {
   parseDetailUrl,
   REAPPROVAL_STATUSES,
   SUBMITTABLE_STATUSES,
-  validateSchedule,
 } from './submission-rules.js';
 
 export type SubmissionRow = Submission & {
@@ -98,6 +101,7 @@ function selectSubmissionRows(db: Database, where: SQL | undefined) {
   return db
     .select({
       id: submissions.id,
+      type: submissions.type,
       requesterId: submissions.requesterId,
       ziggleNoticeId: submissions.ziggleNoticeId,
       title: submissions.title,
@@ -149,12 +153,13 @@ export class SubmissionsService {
     dto: CreateSubmissionDto,
   ): Promise<SubmissionDetailDto> {
     const now = new Date();
+    const kind = kindOf(dto.type ?? 'POSTER');
     const startAt = new Date(dto.startAt);
     const endAt = new Date(dto.endAt);
     const targetGroupIds = dto.targetGroupIds ?? [];
 
     const errors: FieldErrors = {
-      ...validateSchedule(startAt, endAt, now),
+      ...kind.validateSchedule(startAt, endAt, now),
       ...(await this.validateReferences(user.id, {
         categoryId: dto.categoryId,
         assetId: dto.assetId,
@@ -171,6 +176,7 @@ export class SubmissionsService {
         const [row] = await tx
           .insert(submissions)
           .values({
+            type: kind.type,
             requesterId: user.id,
             ziggleNoticeId: detail?.ziggleNoticeId ?? null,
             title: dto.title,
@@ -222,6 +228,7 @@ export class SubmissionsService {
       query.statuses?.length
         ? inArray(submissions.status, query.statuses)
         : ne(submissions.status, 'ARCHIVED'),
+      typeCondition(query.type),
     );
 
     // 최신 신청부터. createdAt이 같으면 id로 순서를 고정한다.
@@ -261,7 +268,7 @@ export class SubmissionsService {
     const { status, startAt, endAt } = submissions;
     const approved = sql`${status} in ('APPROVED', 'SCHEDULED', 'PUBLISHED')`;
 
-    const [byStatusRows, [effective]] = await Promise.all([
+    const [byStatusRows, [effective], byTypeRows] = await Promise.all([
       this.db
         .select({ status, total: count() })
         .from(submissions)
@@ -285,7 +292,31 @@ export class SubmissionsService {
         })
         .from(submissions)
         .where(filter),
+      this.db
+        .select({
+          type: submissions.type,
+          pendingReview: count(),
+          oldestSubmittedAt: sql<Date>`min(${waitingSince})`.mapWith(
+            submissions.submittedAt,
+          ),
+        })
+        .from(submissions)
+        .where(and(filter, eq(status, 'PENDING_REVIEW')))
+        .groupBy(submissions.type),
     ]);
+
+    const byType = Object.fromEntries(
+      submissionTypeEnum.enumValues.map((type) => [
+        type,
+        { pendingReview: 0, oldestSubmittedAt: null },
+      ]),
+    ) as Record<SubmissionType, SubmissionTypeSummaryDto>;
+    for (const row of byTypeRows) {
+      byType[row.type] = {
+        pendingReview: row.pendingReview,
+        oldestSubmittedAt: row.oldestSubmittedAt.toISOString(),
+      };
+    }
 
     const byStatus = Object.fromEntries(
       submissionStatusEnum.enumValues.map((value) => [value, 0]),
@@ -303,6 +334,7 @@ export class SubmissionsService {
       pendingReview: byStatus.PENDING_REVIEW,
       ended: effective.ended,
       byStatus,
+      byType,
     };
   }
 
@@ -377,7 +409,7 @@ export class SubmissionsService {
     if (changes.startAt || changes.endAt || needsReapproval) {
       Object.assign(
         errors,
-        validateSchedule(
+        kindOf(current.type).validateSchedule(
           changes.startAt ?? current.startAt,
           changes.endAt ?? current.endAt,
           now,
@@ -464,7 +496,11 @@ export class SubmissionsService {
     if (!SUBMITTABLE_STATUSES.includes(current.status)) {
       throw conflict(`Submission in ${current.status} cannot be submitted`);
     }
-    const errors = validateSchedule(current.startAt, current.endAt, now);
+    const errors = kindOf(current.type).validateSchedule(
+      current.startAt,
+      current.endAt,
+      now,
+    );
     if (Object.keys(errors).length > 0) {
       throw validationFailed(errors);
     }
@@ -521,6 +557,7 @@ export class SubmissionsService {
       query.categoryId
         ? eq(submissions.categoryId, query.categoryId)
         : undefined,
+      typeCondition(query.type),
     );
 
     let pageFilter = filter;
@@ -597,10 +634,7 @@ export class SubmissionsService {
   }
 
   async findRow(id: string): Promise<SubmissionRow | undefined> {
-    const [row] = await selectSubmissionRows(
-      this.db,
-      eq(submissions.id, id),
-    );
+    const [row] = await selectSubmissionRows(this.db, eq(submissions.id, id));
     return row;
   }
 
@@ -640,7 +674,7 @@ export class SubmissionsService {
       ziggleNoticeId: row.ziggleNoticeId,
       requesterId: row.requesterId,
       requesterName: row.requesterName,
-      type: 'POSTER',
+      type: row.type,
       title: row.title,
       categoryId: row.categoryId,
       categoryName: row.categoryName,
@@ -751,6 +785,10 @@ export class SubmissionsService {
   private scopeCondition(user: AuthUser, scope: SubmissionScope) {
     return scope === 'me' ? eq(submissions.requesterId, user.id) : undefined;
   }
+}
+
+function typeCondition(types: SubmissionType[] | undefined): SQL | undefined {
+  return types?.length ? inArray(submissions.type, types) : undefined;
 }
 
 function notFound(): AppException {
