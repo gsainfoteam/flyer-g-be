@@ -398,6 +398,17 @@ describe('게시 신청 (e2e)', () => {
       expect(archived.body.totalCount).toBe(1);
     });
 
+    it('키를 반복한 필터도 쉼표 구분과 같게 읽는다', async () => {
+      const res = await get(
+        '/signage/submissions?statuses=APPROVED&statuses=ARCHIVED',
+        lister,
+      ).expect(200);
+      expect(res.body.items.map((s: { id: string }) => s.id)).toEqual([
+        ids[1],
+        ids[0],
+      ]);
+    });
+
     it('cursor로 다음 페이지를 이어 받는다', async () => {
       const first = await get(
         '/signage/submissions?statuses=PENDING_REVIEW,APPROVED,ARCHIVED&limit=2&cursor=',
@@ -436,6 +447,9 @@ describe('게시 신청 (e2e)', () => {
     it('알 수 없는 상태·종류 필터는 422', async () => {
       await get('/signage/submissions?statuses=NOPE', lister).expect(422);
       await get('/signage/submissions?type=POSTER,NOPE', lister).expect(422);
+      await get('/signage/submissions?type=POSTER&type=NOPE', lister).expect(
+        422,
+      );
     });
 
     it('상세는 본인과 검토자만, 나머지는 404', async () => {

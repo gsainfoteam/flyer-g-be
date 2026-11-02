@@ -45,7 +45,7 @@ export class SignageConfigDto {
       '사용자당 서울 하루 신청 한도(종류 → 건수). 한도가 있는 종류만 들어 있다. 넘으면 429 DAILY_LIMIT_EXCEEDED',
     type: 'object',
     additionalProperties: { type: 'integer' },
-    example: { STORY: 5, EVENT_BANNER: 3 },
+    example: {},
   })
   dailySubmissionLimits: Partial<Record<SubmissionType, number>>;
 
