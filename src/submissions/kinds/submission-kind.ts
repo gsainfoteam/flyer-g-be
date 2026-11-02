@@ -18,6 +18,7 @@ export type KindInput = Pick<
   | 'location'
   | 'description'
   | 'eventBanner'
+  | 'story'
 >;
 
 export type KindInputField = keyof KindInput;
@@ -32,6 +33,7 @@ export const KIND_INPUT_FIELDS: readonly KindInputField[] = [
   'location',
   'description',
   'eventBanner',
+  'story',
 ];
 
 /** submissions 행 중 종류가 정하는 컬럼 */
@@ -70,6 +72,7 @@ export type KindResponse = Pick<
   | 'location'
   | 'description'
   | 'eventBanner'
+  | 'story'
 >;
 
 /** 종류 정의가 DB·다른 서비스를 직접 모르게 서비스가 넘겨 주는 것 */
@@ -99,6 +102,22 @@ export interface DetailStore<Detail> {
 }
 
 /**
+ * - REQUESTED: 신청자가 기간을 보내고, 검토 대기에 들어갈 때(생성·재제출)와 기간을 바꿀 때 validate로 검사한다
+ * - ON_APPROVAL: 기간을 받지 않는다(보내면 422). 승인 시각으로 정한다
+ *
+ * 기준 시각은 항상 서버 시각이다.
+ */
+export type KindSchedule =
+  | {
+      mode: 'REQUESTED';
+      validate(startAt: Date, endAt: Date, now: Date): FieldErrors;
+    }
+  | {
+      mode: 'ON_APPROVAL';
+      periodFrom(approvedAt: Date): { startAt: Date; endAt: Date };
+    };
+
+/**
  * 심사받는 컨텐츠 종류 하나의 규칙. 공통 서비스는 종류를 모른 채 이 정의에 맡긴다.
  * 종류를 더할 때는 정의 파일을 만들고 kinds/index.ts의 SUBMISSION_KINDS에 한 줄 더한다.
  */
@@ -108,14 +127,20 @@ export interface SubmissionKind<Detail = unknown> {
   /** 이 종류가 받는 입력 필드. 그 밖의 종류별 필드를 보내면 422다 */
   readonly inputFields: readonly KindInputField[];
 
-  /**
-   * 게시 기간 규칙. 검토 대기에 들어갈 때(생성·재제출)와 기간을 바꿀 때 검사한다.
-   * 기준 시각은 항상 서버 시각이다.
-   */
-  validateSchedule(startAt: Date, endAt: Date, now: Date): FieldErrors;
+  /** 게시 기간을 누가 언제 정하나 */
+  readonly schedule: KindSchedule;
+
+  /** 대상 위치(targetGroupIds)를 받나. 받지 않으면 전체 기기에 나간다 */
+  readonly targetable: boolean;
 
   /** 사용자당 서울 하루 생성 한도. 없으면 null. GET /signage/config에도 나간다 */
   readonly dailyLimit: number | null;
+
+  /** 반려·중단된 뒤 고쳐서 다시 낼 수 있나. 없으면 새로 써야 한다 (409 NOT_RESUBMITTABLE) */
+  readonly resubmittable: boolean;
+
+  /** 작성자를 가리나. 가리면 본인이 아닌 사람(검토자 포함)에게 신청자 정보가 null로 나간다 */
+  readonly anonymous: boolean;
 
   /**
    * 입력을 저장할 값으로 바꾸고 검증한다. 생성이면 current가 null이다.
@@ -129,6 +154,9 @@ export interface SubmissionKind<Detail = unknown> {
 
   /** 상세 테이블. 없으면 submissions 컬럼만 쓴다 (detail은 null) */
   readonly details: DetailStore<Detail> | null;
+
+  /** 승인 트랜잭션 안에서 부른다. 승인 때 정하는 값(제보 번호 등)을 채운다 */
+  onApprove?(tx: Transaction, submissionId: string): Promise<void>;
 
   toResponse(
     row: SubmissionRow,
@@ -168,6 +196,7 @@ export const EMPTY_KIND_RESPONSE: KindResponse = {
   location: null,
   description: null,
   eventBanner: null,
+  story: null,
 };
 
 /** 수정 입력: undefined면 지금 값, null이면 비움 */

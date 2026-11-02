@@ -11,6 +11,14 @@ import {
 } from './submission-kind.js';
 
 const kst = (iso: string) => new Date(`${iso}+09:00`);
+/** 신청자가 기간을 정하는 종류의 기간 규칙 */
+function validate(startAt: Date, endAt: Date, now: Date) {
+  if (EVENT_BANNER_KIND.schedule.mode !== 'REQUESTED') {
+    throw new Error('expected REQUESTED schedule');
+  }
+  return EVENT_BANNER_KIND.schedule.validate(startAt, endAt, now);
+}
+
 const NOW = kst('2026-10-31T10:00:00');
 
 const IMAGE_ID = '00000000-0000-4000-8000-000000000001';
@@ -51,49 +59,25 @@ const resolve = (
   context = ctx(),
 ) => EVENT_BANNER_KIND.resolve({ eventBanner }, current, context);
 
-describe('EVENT_BANNER_KIND.validateSchedule', () => {
+describe('EVENT_BANNER_KIND.schedule', () => {
   it('서울 자정부터 자정까지 1~3일', () => {
     const start = kst('2026-11-01T00:00:00');
-    expect(
-      EVENT_BANNER_KIND.validateSchedule(
-        start,
-        kst('2026-11-02T00:00:00'),
-        NOW,
-      ),
-    ).toEqual({});
-    expect(
-      EVENT_BANNER_KIND.validateSchedule(
-        start,
-        kst('2026-11-04T00:00:00'),
-        NOW,
-      ),
-    ).toEqual({});
-    expect(
-      EVENT_BANNER_KIND.validateSchedule(
-        start,
-        kst('2026-11-05T00:00:00'),
-        NOW,
-      ),
-    ).toEqual({ endAt: '이벤트 배너는 최대 3일까지 걸 수 있습니다.' });
+    expect(validate(start, kst('2026-11-02T00:00:00'), NOW)).toEqual({});
+    expect(validate(start, kst('2026-11-04T00:00:00'), NOW)).toEqual({});
+    expect(validate(start, kst('2026-11-05T00:00:00'), NOW)).toEqual({
+      endAt: '이벤트 배너는 최대 3일까지 걸 수 있습니다.',
+    });
   });
 
   it('오늘 자정에 시작하는 당일 신청을 받는다', () => {
     expect(
-      EVENT_BANNER_KIND.validateSchedule(
-        kst('2026-10-31T00:00:00'),
-        kst('2026-11-01T00:00:00'),
-        NOW,
-      ),
+      validate(kst('2026-10-31T00:00:00'), kst('2026-11-01T00:00:00'), NOW),
     ).toEqual({});
   });
 
   it('자정이 아닌 시각은 오류', () => {
     expect(
-      EVENT_BANNER_KIND.validateSchedule(
-        kst('2026-11-01T09:00:00'),
-        kst('2026-11-02T09:00:00'),
-        NOW,
-      ),
+      validate(kst('2026-11-01T09:00:00'), kst('2026-11-02T09:00:00'), NOW),
     ).toEqual({
       startAt: '시작은 서울 기준 자정(00:00)이어야 합니다.',
       endAt: '종료는 서울 기준 자정(00:00)이어야 합니다.',
@@ -102,11 +86,7 @@ describe('EVENT_BANNER_KIND.validateSchedule', () => {
 
   it('공통 기간 규칙이 먼저다', () => {
     expect(
-      EVENT_BANNER_KIND.validateSchedule(
-        kst('2026-10-29T00:00:00'),
-        kst('2026-10-30T00:00:00'),
-        NOW,
-      ),
+      validate(kst('2026-10-29T00:00:00'), kst('2026-10-30T00:00:00'), NOW),
     ).toEqual({ endAt: '종료 시각이 이미 지났습니다.' });
   });
 });

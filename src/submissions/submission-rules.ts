@@ -81,6 +81,12 @@ export const REAPPROVAL_STATUSES: readonly SubmissionStatus[] = [
   'SCHEDULED',
 ];
 
+/** 검토에서 돌려받은 상태. 다시 낼 수 없는 종류(제보)는 이 상태에서 고치지도 못한다 */
+export const RETURNED_STATUSES: readonly SubmissionStatus[] = [
+  'REJECTED',
+  'SUSPENDED',
+];
+
 /** 검토를 다시 요청할 수 있는 상태. 반려·중단된 신청을 고친 뒤 다시 낸다. */
 export const SUBMITTABLE_STATUSES: readonly SubmissionStatus[] = [
   'DRAFT',
@@ -94,7 +100,7 @@ export const SUBMITTABLE_STATUSES: readonly SubmissionStatus[] = [
  */
 export function canCancel(
   status: SubmissionStatus,
-  startAt: Date,
+  startAt: Date | null,
   now: Date,
 ): boolean {
   if (
@@ -104,17 +110,23 @@ export function canCancel(
   ) {
     return true;
   }
-  return (status === 'APPROVED' || status === 'SCHEDULED') && now < startAt;
+  return (
+    (status === 'APPROVED' || status === 'SCHEDULED') &&
+    startAt !== null &&
+    now < startAt
+  );
 }
 
 /** 게시가 이미 시작됐는가 (배치 지연과 무관하게 기간으로 판정) */
 export function hasStartedPublishing(
   status: SubmissionStatus,
-  startAt: Date,
+  startAt: Date | null,
   now: Date,
 ): boolean {
   return (
     status === 'PUBLISHED' ||
-    ((status === 'APPROVED' || status === 'SCHEDULED') && startAt <= now)
+    ((status === 'APPROVED' || status === 'SCHEDULED') &&
+      startAt !== null &&
+      startAt <= now)
   );
 }

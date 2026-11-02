@@ -111,8 +111,9 @@ export class PlaylistService {
             }
           : null,
       detailUrl: row.detailUrl,
-      startsAt: row.startAt.toISOString(),
-      endsAt: row.endAt.toISOString(),
+      // 조회 조건이 기간 안의 것만 남기므로 기간이 있다
+      startsAt: row.startAt!.toISOString(),
+      endsAt: row.endAt!.toISOString(),
       priority: row.priority,
       checksum: row.checksum!,
       subtitle: row.subtitle,

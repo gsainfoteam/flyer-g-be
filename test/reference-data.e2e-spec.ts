@@ -135,9 +135,10 @@ describe('참조 데이터와 운영 설정 (e2e)', () => {
       titleMaxLength: 80,
       maxPublishMonths: 3,
       eventBannerMaxDays: 3,
+      storyDisplayDays: 2,
       // 24시간 전 신청 규칙은 없어졌다. 필드는 정리 배포까지 0으로 남는다
       minLeadTimeHours: 0,
-      dailySubmissionLimits: { EVENT_BANNER: 3 },
+      dailySubmissionLimits: { EVENT_BANNER: 3, STORY: 5 },
       // e2e는 영상 업로드를 켜고 돈다 (vitest.config.e2e.ts)
       allowedMimeTypes: [
         'image/jpeg',

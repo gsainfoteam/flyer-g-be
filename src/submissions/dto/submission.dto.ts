@@ -8,6 +8,7 @@ import {
   type SubmissionType,
 } from '../../db/schema.js';
 import { EventBannerDto } from './event-banner.dto.js';
+import { StoryDto } from './story.dto.js';
 
 const STATUSES = submissionStatusEnum.enumValues;
 
@@ -24,14 +25,23 @@ export class SubmissionDto {
   })
   ziggleNoticeId: string | null;
 
-  @ApiProperty({ example: '6f1c2c1e-0000-4000-8000-000000000001' })
-  requesterId: string;
+  @ApiProperty({
+    description:
+      '신청자. 작성자를 가리는 종류(STORY)는 본인이 아니면(검토자 포함) null이다. 운영자는 reveal-author로 확인한다',
+    type: String,
+    nullable: true,
+    example: '6f1c2c1e-0000-4000-8000-000000000001',
+  })
+  requesterId: string | null;
 
   @ApiProperty({
-    description: '신청자 이름. 검토 화면에서 누가 올렸는지 보여준다',
+    description:
+      '신청자 이름. 검토 화면에서 누가 올렸는지 보여준다. requesterId와 같은 규칙으로 null일 수 있다',
+    type: String,
+    nullable: true,
     example: '홍길동',
   })
-  requesterName: string;
+  requesterName: string | null;
 
   @ApiProperty({
     description: '신청 종류',
@@ -144,11 +154,22 @@ export class SubmissionDto {
   })
   detailUrl: string | null;
 
-  @ApiProperty({ example: '2026-07-30T00:00:00.000Z' })
-  startAt: string;
+  @ApiProperty({
+    description:
+      '게시 시작. 승인 때 기간을 정하는 종류(STORY)는 승인 전까지 null',
+    type: String,
+    nullable: true,
+    example: '2026-07-30T00:00:00.000Z',
+  })
+  startAt: string | null;
 
-  @ApiProperty({ example: '2026-08-06T14:59:59.000Z' })
-  endAt: string;
+  @ApiProperty({
+    description: '게시 종료. startAt과 같은 규칙으로 null일 수 있다',
+    type: String,
+    nullable: true,
+    example: '2026-08-06T14:59:59.000Z',
+  })
+  endAt: string | null;
 
   @ApiProperty({
     description:
@@ -197,6 +218,13 @@ export class SubmissionDto {
   eventBanner: EventBannerDto | null;
 
   @ApiProperty({
+    description: '소식 제보의 내용. 다른 종류는 null',
+    type: StoryDto,
+    nullable: true,
+  })
+  story: StoryDto | null;
+
+  @ApiProperty({
     description: '낙관적 잠금 버전. 수정·상태 변경 요청에 그대로 실어 보낸다',
     example: 1,
   })
@@ -233,6 +261,18 @@ export class SubmissionDetailDto extends SubmissionDto {
     example: '2026-07-29T06:30:00.000Z',
   })
   serverTime: string;
+}
+
+/** 작성자 열람 응답 */
+export class SubmissionAuthorDto {
+  @ApiProperty({ example: '6f1c2c1e-0000-4000-8000-000000000001' })
+  requesterId: string;
+
+  @ApiProperty({ example: '홍길동' })
+  requesterName: string;
+
+  @ApiProperty({ example: 'gildong@gm.gist.ac.kr' })
+  requesterEmail: string;
 }
 
 export class SubmissionStatusCountsDto {
@@ -272,6 +312,9 @@ export class SubmissionTypeSummariesDto implements Record<
 
   @ApiProperty({ type: SubmissionTypeSummaryDto })
   EVENT_BANNER: SubmissionTypeSummaryDto;
+
+  @ApiProperty({ type: SubmissionTypeSummaryDto })
+  STORY: SubmissionTypeSummaryDto;
 }
 
 export class SubmissionSummaryDto {

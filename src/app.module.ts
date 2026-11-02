@@ -17,6 +17,7 @@ import { PlaylistModule } from './playlist/playlist.module.js';
 import { PolicyModule } from './policy/policy.module.js';
 import { ReviewsModule } from './reviews/reviews.module.js';
 import { StatsModule } from './stats/stats.module.js';
+import { StoriesModule } from './stories/stories.module.js';
 import { SubmissionsModule } from './submissions/submissions.module.js';
 import { TargetGroupsModule } from './target-groups/target-groups.module.js';
 
@@ -35,6 +36,7 @@ import { TargetGroupsModule } from './target-groups/target-groups.module.js';
     TargetGroupsModule,
     AssetsModule,
     SubmissionsModule,
+    StoriesModule,
     ReviewsModule,
     DevicesModule,
     PlaylistModule,

@@ -16,6 +16,8 @@ export const AUDIT_ACTIONS = [
   'SUBMISSION_SCHEDULED',
   'SUBMISSION_PUBLISHED',
   'SUBMISSION_ENDED',
+  // 운영자가 제보 작성자를 열람했다. 작성자는 metadata에도 남기지 않는다
+  'STORY_AUTHOR_REVEALED',
   'DEVICE_REGISTERED',
   'DEVICE_UPDATED',
   'DEVICE_TOKEN_ROTATED',

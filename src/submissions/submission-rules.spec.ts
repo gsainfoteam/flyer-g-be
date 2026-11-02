@@ -112,4 +112,9 @@ describe('canCancel / hasStartedPublishing', () => {
     expect(hasStartedPublishing('SCHEDULED', hours(1), NOW)).toBe(false);
     expect(hasStartedPublishing('PUBLISHED', hours(1), NOW)).toBe(true);
   });
+
+  it('기간이 아직 없는(승인 때 정하는) 검토 대기 건은 취소할 수 있고 게시 전이다', () => {
+    expect(canCancel('PENDING_REVIEW', null, NOW)).toBe(true);
+    expect(hasStartedPublishing('PENDING_REVIEW', null, NOW)).toBe(false);
+  });
 });

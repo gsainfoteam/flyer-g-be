@@ -16,6 +16,7 @@ import {
   integer,
   jsonb,
   pgEnum,
+  pgSequence,
   pgTable,
   primaryKey,
   timestamp,
@@ -231,6 +232,7 @@ export type SubmissionStatus = (typeof submissionStatusEnum.enumValues)[number];
 export const submissionTypeEnum = pgEnum('submission_type', [
   'POSTER',
   'EVENT_BANNER',
+  'STORY',
 ]);
 
 export type SubmissionType = (typeof submissionTypeEnum.enumValues)[number];
@@ -254,8 +256,9 @@ export const submissions = pgTable(
     // 포스터는 포스터, 이벤트 배너는 IMAGE 모드의 이미지나 TEMPLATE 모드의 사진(없으면 null).
     assetId: uuid('asset_id').references(() => assets.id),
     detailUrl: varchar('detail_url', { length: 2048 }),
-    startAt: timestamp('start_at', { withTimezone: true }).notNull(),
-    endAt: timestamp('end_at', { withTimezone: true }).notNull(),
+    // 게시 기간. 신청자가 정하는 종류는 처음부터 있고, 승인 때 정하는 종류(제보)는 승인 전까지 null이다
+    startAt: timestamp('start_at', { withTimezone: true }),
+    endAt: timestamp('end_at', { withTimezone: true }),
     status: submissionStatusEnum('status').notNull(),
     // 편성 우선순위. 운영자가 정한다(기본 0).
     priority: integer('priority').notNull().default(0),
@@ -291,6 +294,16 @@ export const submissions = pgTable(
       .on(table.ziggleNoticeId)
       .where(sql`${table.status} not in ('CANCELED', 'ENDED', 'ARCHIVED')`),
     check('submissions_period_order', sql`${table.endAt} > ${table.startAt}`),
+    check(
+      'submissions_period_both_or_neither',
+      sql`(${table.startAt} is null) = (${table.endAt} is null)`,
+    ),
+    // 승인을 거친 신청은 기간이 있다. 기간이 비는 것은 승인 때 기간을 정하는 종류의 승인 전뿐이다.
+    // (새 종류 값은 같은 트랜잭션의 CHECK에 쓸 수 없어 종류 대신 상태로 적는다. 마이그레이션은 한 트랜잭션에서 돈다)
+    check(
+      'submissions_period_after_approval',
+      sql`${table.startAt} is not null or ${table.status} in ('DRAFT', 'PENDING_REVIEW', 'REJECTED', 'CANCELED', 'ARCHIVED')`,
+    ),
     check(
       'submissions_poster_fields',
       sql`${table.type} <> 'POSTER' or (${table.categoryId} is not null and ${table.assetId} is not null)`,
@@ -351,6 +364,34 @@ export const submissionEventBanners = pgTable(
 
 export type SubmissionEventBanner = typeof submissionEventBanners.$inferSelect;
 
+export const storyTagEnum = pgEnum('story_tag', [
+  'NEWS',
+  'PRAISE',
+  'LOST_FOUND',
+  'SUGGESTION',
+  'OTHER',
+]);
+
+export type StoryTag = (typeof storyTagEnum.enumValues)[number];
+
+/** 제보 번호. 승인 때 하나씩 받는다. 롤백으로 번호가 비는 것은 괜찮다(사람이 보는 일련번호일 뿐) */
+export const storyNumberSeq = pgSequence('story_number_seq');
+
+/**
+ * 소식 제보 (신청과 1:1). 작성자는 응답·편성·감사 로그에서 가린다(submissions.requester_id에만 있다).
+ */
+export const submissionStories = pgTable('submission_stories', {
+  submissionId: uuid('submission_id')
+    .primaryKey()
+    .references(() => submissions.id, { onDelete: 'cascade' }),
+  tag: storyTagEnum('tag').notNull(),
+  body: varchar('body', { length: 140 }).notNull(),
+  // TV에 #128로 나오는 번호. 승인 때 정하고, 반려된 제보는 없다
+  storyNumber: integer('story_number').unique(),
+});
+
+export type SubmissionStory = typeof submissionStories.$inferSelect;
+
 /** 신청의 대상 위치 그룹. 없으면 전체 기기가 대상이다. */
 export const submissionTargetGroups = pgTable(
   'submission_target_groups',
@@ -384,6 +425,10 @@ export const rejectReasonCodeEnum = pgEnum('reject_reason_code', [
   'INAPPROPRIATE',
   'PERIOD',
   'DUPLICATE',
+  // 소식 제보용. 종류마다 고를 수 있는 사유는 프론트가 거른다
+  'PERSONAL_INFO',
+  'DEFAMATION',
+  'ADVERTISEMENT',
   'OTHER',
 ]);
 

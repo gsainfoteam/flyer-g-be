@@ -15,6 +15,7 @@ import {
   type SubmissionStatus,
 } from '../db/schema.js';
 import type { SubmissionDetailDto } from '../submissions/dto/submission.dto.js';
+import { kindOf } from '../submissions/kinds/index.js';
 import {
   SubmissionsService,
   type SubmissionRow,
@@ -42,7 +43,10 @@ export class ReviewsService {
     private readonly auditService: AuditService,
   ) {}
 
-  /** 시작 시각이 지났으면 바로 게시 중, 아니면 예약이다. 프론트는 이 응답 상태를 그대로 쓴다. */
+  /**
+   * 시작 시각이 지났으면 바로 게시 중, 아니면 예약이다. 프론트는 이 응답 상태를 그대로 쓴다.
+   * 승인 때 기간을 정하는 종류(제보)는 지금부터 기간을 정하므로 바로 게시 중이다.
+   */
   async approve(
     reviewer: AuthUser,
     id: string,
@@ -50,7 +54,12 @@ export class ReviewsService {
   ): Promise<SubmissionDetailDto> {
     const now = new Date();
     const current = await this.findPending(id, revision);
-    if (current.endAt <= now) {
+    const kind = kindOf(current.type);
+    const period =
+      kind.schedule.mode === 'ON_APPROVAL'
+        ? kind.schedule.periodFrom(now)
+        : { startAt: current.startAt!, endAt: current.endAt! };
+    if (period.endAt <= now) {
       throw conflict('Publish period has already ended');
     }
     // 신청은 READY asset만 가리킬 수 있지만, 승인 시점의 미디어를 한 번 더 확인하고 checksum을 고정한다.
@@ -63,9 +72,16 @@ export class ReviewsService {
     }
     const assetChecksum = asset?.checksum ?? null;
 
-    const status = current.startAt <= now ? 'PUBLISHED' : 'SCHEDULED';
+    const status = period.startAt <= now ? 'PUBLISHED' : 'SCHEDULED';
     await this.db.transaction(async (tx) => {
-      await this.submissionsService.applyTransition(tx, current, status, now);
+      await this.submissionsService.applyTransition(
+        tx,
+        current,
+        status,
+        now,
+        period,
+      );
+      await kind.onApprove?.(tx, id);
       await tx.insert(reviews).values({
         submissionId: id,
         revision: current.version,
@@ -86,7 +102,7 @@ export class ReviewsService {
         at: now,
       });
     });
-    return this.submissionsService.detail(id, now);
+    return this.submissionsService.detail(id, now, reviewer);
   }
 
   async reject(
@@ -124,7 +140,7 @@ export class ReviewsService {
         at: now,
       });
     });
-    return this.submissionsService.detail(id, now);
+    return this.submissionsService.detail(id, now, reviewer);
   }
 
   /**
@@ -140,7 +156,8 @@ export class ReviewsService {
     const current = await this.findExisting(id);
     if (
       !SUSPENDABLE_STATUSES.includes(current.status) ||
-      current.endAt <= now
+      // 승인된 신청은 기간이 있다 (submissions_period_after_approval)
+      current.endAt! <= now
     ) {
       throw conflict(`Submission in ${current.status} cannot be suspended`);
     }
@@ -169,7 +186,7 @@ export class ReviewsService {
         at: now,
       });
     });
-    return this.submissionsService.detail(id, now);
+    return this.submissionsService.detail(id, now, reviewer);
   }
 
   /** 검토 이력. 신청자 본인과 검토자만 본다. 오래된 것부터 (상세 화면 타임라인 순서). */
