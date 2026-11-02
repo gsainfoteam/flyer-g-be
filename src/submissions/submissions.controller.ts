@@ -207,7 +207,7 @@ export class SubmissionsController {
   @ApiOperation({
     summary: '재검토 요청',
     description:
-      '반려(REJECTED)·중단(SUSPENDED)된 신청을 다시 검토 대기(PENDING_REVIEW)로 보낸다. 기간 규칙을 지금 시각으로 다시 검사하므로, 종료가 지났으면 먼저 기간을 고친다. 소식 제보(STORY)는 다시 낼 수 없다(409 NOT_RESUBMITTABLE, 새로 쓴다).',
+      '반려(REJECTED)·중단(SUSPENDED)된 신청을 다시 검토 대기(PENDING_REVIEW)로 보낸다. 기간 규칙을 지금 시각으로 다시 검사하므로, 종료 시각이 지났거나 최대 게시 기간을 넘으면 먼저 기간을 고친다. 소식 제보(STORY)는 다시 낼 수 없다(409 NOT_RESUBMITTABLE, 새로 쓴다).',
   })
   @ApiParam(ID_PARAM)
   @ApiOkResponse({ type: SubmissionDetailDto })
