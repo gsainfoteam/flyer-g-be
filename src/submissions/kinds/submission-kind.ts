@@ -1,7 +1,18 @@
+import { createHash } from 'node:crypto';
 import type { AssetsService } from '../../assets/assets.service.js';
 import type { FieldErrors } from '../../common/errors/app.exception.js';
 import type { Database, Transaction } from '../../db/index.js';
-import type { Asset, SubmissionType, submissions } from '../../db/schema.js';
+import type {
+  Asset,
+  Submission,
+  SubmissionType,
+  submissions,
+} from '../../db/schema.js';
+import type {
+  EventBannerPlaylistItemDto,
+  StoryPlaylistItemDto,
+} from '../../playlist/dto/playlist-v2.dto.js';
+import type { PlaylistItemDto } from '../../playlist/dto/playlist.dto.js';
 import type { SubmissionDto } from '../dto/submission.dto.js';
 import type { CreateSubmissionDto } from '../dto/submission-input.dto.js';
 import type { SubmissionRow } from '../submissions.service.js';
@@ -93,6 +104,33 @@ export type ResolvedContent<Detail> = {
   detail: Detail;
 };
 
+/** 편성 응답에 싣는 신청 행. 게시 중인 것만 읽으므로 기간이 있다 */
+export type PlaylistRow = Pick<
+  Submission,
+  | 'id'
+  | 'type'
+  | 'version'
+  | 'title'
+  | 'detailUrl'
+  | 'priority'
+  | 'subtitle'
+  | 'location'
+  | 'organizerName'
+> & {
+  startAt: Date;
+  endAt: Date;
+  categoryName: string | null;
+  /** 주 미디어(submissions.asset_id). 편성에는 READY인 것만 실린다 */
+  asset: Pick<
+    Asset,
+    'id' | 'kind' | 'width' | 'height' | 'durationMs' | 'hasAudio' | 'checksum'
+  > | null;
+};
+
+/** 편성 응답 v2의 submissions[type] 항목 */
+export type PlaylistSubmissionItem =
+  PlaylistItemDto | EventBannerPlaylistItemDto | StoryPlaylistItemDto;
+
 /** 종류만의 상세 테이블 (신청과 1:1) */
 export interface DetailStore<Detail> {
   load(db: Database, ids: string[]): Promise<Map<string, Detail>>;
@@ -163,6 +201,13 @@ export interface SubmissionKind<Detail = unknown> {
     detail: Detail,
     media: MediaUrls,
   ): KindResponse;
+
+  /** 편성 응답 v2의 항목. 작성자 정보는 싣지 않는다 */
+  toPlaylistItem(
+    row: PlaylistRow,
+    detail: Detail,
+    media: MediaUrls,
+  ): PlaylistSubmissionItem;
 }
 
 /** 다른 종류의 필드는 비운다. 정의마다 필요한 것만 덮어쓴다 */
@@ -198,6 +243,22 @@ export const EMPTY_KIND_RESPONSE: KindResponse = {
   eventBanner: null,
   story: null,
 };
+
+/** 편성 항목의 공통 필드 */
+export function playlistEntry(row: PlaylistRow, checksum: string) {
+  return {
+    submissionId: row.id,
+    revision: row.version,
+    startsAt: row.startAt.toISOString(),
+    endsAt: row.endAt.toISOString(),
+    checksum,
+  };
+}
+
+/** 미디어만으로 정해지지 않는 항목(문구가 있는 것)의 checksum. 내용이 같으면 같다 */
+export function contentChecksum(content: Record<string, unknown>): string {
+  return `sha256:${createHash('sha256').update(JSON.stringify(content)).digest('hex')}`;
+}
 
 /** 수정 입력: undefined면 지금 값, null이면 비움 */
 export function patched<T>(

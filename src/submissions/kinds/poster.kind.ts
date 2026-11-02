@@ -3,9 +3,12 @@ import { addMonthsInSeoul } from '../../common/time/seoul-time.js';
 import { SIGNAGE_POLICY } from '../../policy/signage-policy.js';
 import { parseDetailUrl, validatePeriod } from '../submission-rules.js';
 import { checkMediaAsset, type MediaProblem } from './media-asset.js';
+import type { PlaylistItemDto } from '../../playlist/dto/playlist.dto.js';
 import {
   EMPTY_KIND_RESPONSE,
   patched,
+  type MediaUrls,
+  type PlaylistRow,
   type SubmissionKind,
 } from './submission-kind.js';
 
@@ -133,4 +136,46 @@ export const POSTER_KIND: SubmissionKind<null> = {
       description: row.description,
     };
   },
+
+  toPlaylistItem(row, _detail, media) {
+    return posterPlaylistItem(row, media);
+  },
 };
+
+/**
+ * 포스터 편성 항목. 편성 v1의 items와 v2의 submissions.POSTER가 같은 모양이다.
+ * 키 순서까지 v1 playlistVersion에 들어가므로 바꾸지 않는다.
+ */
+export function posterPlaylistItem(
+  row: PlaylistRow,
+  media: MediaUrls,
+): PlaylistItemDto {
+  // 포스터는 asset이 항상 있고, 편성 조회가 READY인 것만 남긴다
+  const asset = row.asset!;
+  return {
+    submissionId: row.id,
+    revision: row.version,
+    title: row.title,
+    category: row.categoryName!,
+    kind: asset.kind,
+    width: asset.width!,
+    height: asset.height!,
+    durationMs: asset.durationMs,
+    assetUrl: media.variantUrls(asset.id).tv,
+    video:
+      asset.kind === 'VIDEO'
+        ? {
+            url: media.videoUrl({ id: asset.id, kind: asset.kind })!,
+            hasAudio: asset.hasAudio!,
+          }
+        : null,
+    detailUrl: row.detailUrl,
+    startsAt: row.startAt.toISOString(),
+    endsAt: row.endAt.toISOString(),
+    priority: row.priority,
+    checksum: asset.checksum!,
+    subtitle: row.subtitle,
+    location: row.location,
+    organizerName: row.organizerName,
+  };
+}

@@ -6,8 +6,10 @@ import {
 } from '../../db/schema.js';
 import { SIGNAGE_POLICY } from '../../policy/signage-policy.js';
 import {
+  contentChecksum,
   EMPTY_KIND_COLUMNS,
   EMPTY_KIND_RESPONSE,
+  playlistEntry,
   type SubmissionKind,
 } from './submission-kind.js';
 
@@ -106,6 +108,12 @@ export const STORY_KIND: SubmissionKind<StoryDetail> = {
 
   toResponse(_row, detail) {
     return { ...EMPTY_KIND_RESPONSE, story: detail };
+  },
+
+  toPlaylistItem(row, { tag, body, storyNumber }) {
+    // 승인된 제보만 편성에 실리고, 승인 때 번호를 받는다
+    const content = { storyNumber: storyNumber!, tag, body };
+    return { ...playlistEntry(row, contentChecksum(content)), ...content };
   },
 };
 

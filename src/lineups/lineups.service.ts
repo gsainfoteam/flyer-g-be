@@ -31,7 +31,9 @@ import {
 } from './lineup-schema.js';
 import {
   pruneOverrides,
+  resolveLineup,
   resolveSettings,
+  type Lineup,
   type LineupBlockView,
 } from './resolve-lineup.js';
 
@@ -173,6 +175,22 @@ export class LineupsService {
   async effectiveSettingsOf(device: Device): Promise<LineupSettings> {
     const settings = await this.settingsOf([device.programGroupId]);
     return effectiveSettings(device, settings);
+  }
+
+  /** 기기가 실제로 따르는 편성(설정과 블록). 꺼진 블록도 들어 있다 */
+  async effectiveLineupOf(device: Device): Promise<Lineup> {
+    const groupId = device.programGroupId;
+    const [settings, blocks] = await Promise.all([
+      this.settingsOf([groupId]),
+      this.blocksOf(this.db, [groupId]),
+    ]);
+    return resolveLineup(
+      {
+        settings: settings.get(groupId) ?? DEFAULT_LINEUP_SETTINGS,
+        blocks: blocks.get(groupId) ?? [],
+      },
+      device.lineupOverrides,
+    );
   }
 
   /**
