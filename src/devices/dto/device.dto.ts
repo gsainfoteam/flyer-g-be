@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { deviceOrientationEnum, type Device } from '../../db/schema.js';
 import { OVERRIDES_DOC } from '../../lineups/dto/lineup.dto.js';
+import { LiveDto } from '../../live/dto/live.dto.js';
 import {
   POSTER_LAYOUTS,
   type DeviceOverrides,
@@ -121,6 +122,14 @@ export class DeviceDto {
     nullable: true,
   })
   now: NowPlayingDto | null;
+
+  @ApiProperty({
+    description:
+      '이 기기가 지금 띄우는 라이브(기기 값, 없으면 그룹 값. main과 alert를 따로 고른다). until이 지난 부분은 null이고, 없으면 null. 기기 목록의 "누가 덮어썼나"에 쓴다',
+    type: LiveDto,
+    nullable: true,
+  })
+  live: LiveDto | null;
 
   @ApiProperty({
     description: `판정 순서대로

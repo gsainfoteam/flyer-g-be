@@ -12,6 +12,7 @@ import { DB_CONNECTION, type Database, type Transaction } from '../db/index.js';
 import {
   deviceTargetGroups,
   devices,
+  liveStates,
   submissionTargetGroups,
   targetGroups,
 } from '../db/schema.js';
@@ -158,6 +159,12 @@ export class TargetGroupsService {
           throw inUse(usage);
         }
         await tx.delete(targetGroups).where(eq(targetGroups.id, id));
+        // 라이브는 범위가 둘이라 FK가 없다. 그룹 라이브를 같이 지운다
+        await tx
+          .delete(liveStates)
+          .where(
+            and(eq(liveStates.scope, 'GROUP'), eq(liveStates.scopeId, id)),
+          );
         await this.auditService.record(tx, {
           actor: { type: 'USER', id: admin.id },
           action: 'GROUP_DELETED',

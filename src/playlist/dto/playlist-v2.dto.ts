@@ -9,6 +9,7 @@ import {
 } from '../../db/schema.js';
 import { LineupBlockDto, SETTINGS_DOC } from '../../lineups/dto/lineup.dto.js';
 import type { LineupSettings } from '../../lineups/lineup-schema.js';
+import { PlaylistLiveDto } from '../../live/dto/live.dto.js';
 import { PlaylistItemDto } from './playlist.dto.js';
 
 /** 포스터가 아닌 신청 항목의 공통 필드 */
@@ -206,10 +207,13 @@ export class PlaylistV2Dto {
   programs: Record<string, PlaylistProgramDto>;
 
   @ApiProperty({
-    description: '라이브 상태. 라이브 배포(⑧) 전에는 항상 null',
-    type: Object,
+    description: `이 기기가 지금 띄울 라이브(기기 값, 없으면 그룹 값. main과 alert를 따로 고른다). 없으면 null
+- until이 지난 부분은 null이다. TV도 until을 보고 스스로 내린다
+- SHOW가 가리키는 신청은 이 기기 대상이 아니어도 submissions에 실린다. 게시 중이 아니면 main이 null이다
+- SHOW가 가리키는 운영 컨텐츠는 programs에 실린다. 지워졌으면 main이 null이다
+- 운영자 정보(setBy)는 싣지 않는다`,
+    type: PlaylistLiveDto,
     nullable: true,
-    example: null,
   })
-  live: null;
+  live: PlaylistLiveDto | null;
 }

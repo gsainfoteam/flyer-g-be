@@ -12,6 +12,7 @@ import {
   lte,
   or,
   sql,
+  type SQL,
 } from 'drizzle-orm';
 import { AssetsService } from '../assets/assets.service.js';
 import { AppException } from '../common/errors/app.exception.js';
@@ -30,6 +31,7 @@ import {
   type SubmissionType,
 } from '../db/schema.js';
 import { LineupsService } from '../lineups/lineups.service.js';
+import { LiveService } from '../live/live.service.js';
 import { kindOf } from '../submissions/kinds/index.js';
 import { posterPlaylistItem } from '../submissions/kinds/poster.kind.js';
 import type {
@@ -82,13 +84,17 @@ export class PlaylistService {
     @Inject(DB_CONNECTION) private readonly db: Database,
     private readonly assetsService: AssetsService,
     private readonly lineupsService: LineupsService,
+    private readonly liveService: LiveService,
   ) {}
 
   async forDevice(device: Device): Promise<PlaylistDto> {
     const now = new Date();
     const [settings, rows] = await Promise.all([
       this.lineupsService.effectiveSettingsOf(device),
-      this.liveSubmissions(device.id, now, ['POSTER']),
+      this.liveSubmissions(
+        now,
+        and(eq(submissions.type, 'POSTER'), targetsDevice(device.id)),
+      ),
     ]);
 
     const items = rows.map((row) =>
@@ -117,20 +123,41 @@ export class PlaylistService {
   /** 편성 응답 v2. TV(`?v=2`)와 운영자 미리보기가 같은 결과를 받는다 */
   async forDeviceV2(device: Device): Promise<PlaylistV2Dto> {
     const now = new Date();
-    const [lineup, rows] = await Promise.all([
+    const [lineup, targeted, live] = await Promise.all([
       this.lineupsService.effectiveLineupOf(device),
-      this.liveSubmissions(device.id, now),
+      this.liveSubmissions(now, targetsDevice(device.id)),
+      this.liveService.effectiveForDevice(device.id, now),
     ]);
     const blocks = lineup.blocks.filter((block) => block.enabled);
+    let main = live?.main ?? null;
+
+    // 라이브가 띄우는 신청은 이 기기 대상이 아니어도 싣는다. 게시 중이 아니면 main을 내린다(FE 7-2)
+    const rows = [...targeted];
+    const shown = main?.action === 'SHOW' ? main.submissionId : null;
+    if (shown && !rows.some((row) => row.id === shown)) {
+      const [row] = await this.liveSubmissions(now, eq(submissions.id, shown));
+      if (row) {
+        rows.push(row);
+      } else {
+        main = null;
+      }
+    }
+    const shownProgram = main?.action === 'SHOW' ? main.programId : null;
     const programIds = [
       ...blocks.flatMap((block) => (block.programId ? [block.programId] : [])),
       ...lineup.settings.infoBar.map((entry) => entry.programId),
+      ...(shownProgram ? [shownProgram] : []),
     ];
 
     const [submissionItems, programItems] = await Promise.all([
       this.submissionItems(rows),
       this.programsOf(programIds),
     ]);
+    // 지워진 운영 컨텐츠를 가리키면 main을 내린다(계획 1-5)
+    if (shownProgram && !programItems[shownProgram]) {
+      main = null;
+    }
+    const alert = live?.alert ?? null;
     const content = {
       timezone: 'Asia/Seoul' as const,
       deviceName: device.name,
@@ -139,7 +166,10 @@ export class PlaylistService {
       blocks,
       submissions: submissionItems,
       programs: programItems,
-      live: null,
+      live:
+        live && (main || alert)
+          ? { main, alert, setAt: live.setAt.toISOString() }
+          : null,
     };
     return {
       serverTime: now.toISOString(),
@@ -167,11 +197,10 @@ export class PlaylistService {
     return this.forDeviceV2(device);
   }
 
-  /** 지금 이 기기에 게시 중인 신청. 우선순위 높은 순, 같으면 시작이 이른 순 */
+  /** 지금 게시 중이고 where에 맞는 신청. 우선순위 높은 순, 같으면 시작이 이른 순 */
   private async liveSubmissions(
-    deviceId: string,
     now: Date,
-    types?: SubmissionType[],
+    where: SQL | undefined,
   ): Promise<PlaylistRow[]> {
     const rows = await this.db
       .select({
@@ -202,12 +231,11 @@ export class PlaylistService {
       .leftJoin(assets, eq(assets.id, submissions.assetId))
       .where(
         and(
-          types ? inArray(submissions.type, types) : undefined,
+          where,
           inArray(submissions.status, PUBLISHABLE_STATUSES),
           lte(submissions.startAt, now),
           gt(submissions.endAt, now),
           or(isNull(submissions.assetId), eq(assets.status, 'READY')),
-          targetsDevice(deviceId),
         ),
       )
       .orderBy(
