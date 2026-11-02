@@ -7,6 +7,7 @@
  */
 
 import { sql } from 'drizzle-orm';
+import type { NowPlaying } from '../devices/dto/now-playing.dto.js';
 import type {
   BlockSchedule,
   DeviceOverrides,
@@ -512,6 +513,8 @@ export const devices = pgTable(
     lastPlaylistVersion: varchar('last_playlist_version', { length: 64 }),
     // 기기가 마지막으로 포스터를 정상 렌더링한 시각(기기 시계 기준)
     lastRenderOkAt: timestamp('last_render_ok_at', { withTimezone: true }),
+    // 마지막 heartbeat의 "지금 장면". 보내지 않는 옛 플레이어는 null
+    nowPlaying: jsonb('now_playing').$type<NowPlaying>(),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),

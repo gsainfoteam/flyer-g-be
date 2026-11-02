@@ -17,6 +17,7 @@ import {
   effectiveSettings,
   LineupsService,
 } from '../lineups/lineups.service.js';
+import { isQuietAt } from '../lineups/quiet-hours.js';
 import { TargetGroupsService } from '../target-groups/target-groups.service.js';
 import { generateDeviceToken, hashDeviceToken } from './auth/device-token.js';
 import type {
@@ -31,8 +32,8 @@ import type {
   DeviceWithTokenDto,
 } from './dto/device.dto.js';
 
-// heartbeat는 60초마다 온다. 세 번 연속 빠지면 꺼진 것으로 본다.
-const ONLINE_WITHIN_MS = 3 * 60 * 1000;
+// heartbeat는 30초마다 온다. 세 번 연속 빠지면 꺼진 것으로 본다.
+const ONLINE_WITHIN_MS = 90 * 1000;
 
 @Trace()
 @Injectable()
@@ -280,9 +281,17 @@ export class DevicesService {
   }
 }
 
-function statusOf(device: Device, now: Date): DeviceStatus {
+/** 화면 끔 시간에는 heartbeat가 없어도 꺼진 것(OFFLINE)으로 보지 않는다 */
+function statusOf(
+  device: Device,
+  settings: LineupSettings,
+  now: Date,
+): DeviceStatus {
   if (!device.isActive) {
     return 'DISABLED';
+  }
+  if (isQuietAt(settings.quietHours, now)) {
+    return 'SLEEPING';
   }
   return device.lastSeenAt &&
     now.getTime() - device.lastSeenAt.getTime() <= ONLINE_WITHIN_MS
@@ -324,7 +333,8 @@ function toDto(
     appVersion: device.appVersion,
     lastPlaylistVersion: device.lastPlaylistVersion,
     lastRenderOkAt: device.lastRenderOkAt?.toISOString() ?? null,
-    status: statusOf(device, now),
+    now: device.nowPlaying,
+    status: statusOf(device, settings, now),
     layout: {
       type: settings.posterLayout,
       rotationSeconds: settings.rotationSeconds,

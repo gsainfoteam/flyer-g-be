@@ -29,6 +29,12 @@ export function seoulDate(date: Date): string {
   return new Date(date.getTime() + SEOUL_OFFSET_MS).toISOString().slice(0, 10);
 }
 
+/** 서울 벽시계로 자정부터 지난 분 (0~1439) */
+export function seoulMinuteOfDay(date: Date): number {
+  const local = new Date(date.getTime() + SEOUL_OFFSET_MS);
+  return local.getUTCHours() * 60 + local.getUTCMinutes();
+}
+
 /** 서울 00:00 정각인가 */
 export function isSeoulMidnight(date: Date): boolean {
   return startOfSeoulDay(seoulDate(date)).getTime() === date.getTime();

@@ -7,8 +7,14 @@ import {
   type PosterLayout,
 } from '../../lineups/lineup-schema.js';
 import { ROTATION_SECONDS_DESCRIPTION } from './device-input.dto.js';
+import { NowPlayingDto } from './now-playing.dto.js';
 
-export const DEVICE_STATUSES = ['ONLINE', 'OFFLINE', 'DISABLED'] as const;
+export const DEVICE_STATUSES = [
+  'ONLINE',
+  'OFFLINE',
+  'SLEEPING',
+  'DISABLED',
+] as const;
 export type DeviceStatus = (typeof DEVICE_STATUSES)[number];
 
 export class ResolutionDto {
@@ -110,7 +116,18 @@ export class DeviceDto {
 
   @ApiProperty({
     description:
-      'DISABLED: 비활성. ONLINE: 3분 안에 heartbeat가 옴. OFFLINE: 그 외(한 번도 안 온 경우 포함)',
+      '마지막 heartbeat가 알린 지금 장면(기기 시계 기준). 서버는 판정하지 않고 그대로 싣는다. 보내지 않는 옛 플레이어나 heartbeat 전에는 null',
+    type: NowPlayingDto,
+    nullable: true,
+  })
+  now: NowPlayingDto | null;
+
+  @ApiProperty({
+    description: `판정 순서대로
+- DISABLED: 비활성
+- SLEEPING: 실제 편성의 화면 끔 시간(settings.quietHours, 서울 기준) 안. heartbeat가 없어도 OFFLINE으로 보지 않는다
+- ONLINE: 90초 안에 heartbeat가 옴
+- OFFLINE: 그 외(한 번도 안 온 경우 포함)`,
     enum: DEVICE_STATUSES,
     example: 'ONLINE',
   })
