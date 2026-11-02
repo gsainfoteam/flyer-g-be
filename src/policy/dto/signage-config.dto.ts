@@ -27,6 +27,13 @@ export class SignageConfigDto {
 
   @ApiProperty({
     description:
+      '이벤트 배너의 최대 게시 일수. 시작·종료는 서울 자정(00:00)이어야 하고, 길이는 1일 이상 이 일수 이하',
+    example: 3,
+  })
+  eventBannerMaxDays: number;
+
+  @ApiProperty({
+    description:
       '**지원 중단.** 예전의 "게시 24시간 전 신청" 규칙. 규칙이 없어져 항상 0이고, 정리 배포에서 필드를 지운다. 읽지 않는다',
     example: 0,
     deprecated: true,
@@ -38,7 +45,7 @@ export class SignageConfigDto {
       '사용자당 서울 하루 신청 한도(종류 → 건수). 한도가 있는 종류만 들어 있다. 넘으면 429 DAILY_LIMIT_EXCEEDED',
     type: 'object',
     additionalProperties: { type: 'integer' },
-    example: {},
+    example: { EVENT_BANNER: 3 },
   })
   dailySubmissionLimits: Partial<Record<SubmissionType, number>>;
 

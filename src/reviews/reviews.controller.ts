@@ -92,7 +92,7 @@ export class ReviewsController {
     description: `검토 대기 중인 신청을 승인한다.
 
 - 응답 상태는 시작 시각이 지났으면 \`PUBLISHED\`, 아니면 \`SCHEDULED\`다. 프론트는 계산하지 않고 이 값을 쓴다
-- 승인한 포스터의 checksum을 검토 이력에 고정한다
+- 승인한 미디어(포스터, 이벤트 배너의 이미지·사진)의 checksum을 검토 이력에 고정한다. 미디어가 없는 신청은 null
 - 게시 기간이 이미 끝난 신청은 승인할 수 없다(409). 기간 문제로 반려한다`,
   })
   @ApiParam(ID_PARAM)

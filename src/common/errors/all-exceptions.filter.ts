@@ -15,7 +15,7 @@ import { AppException } from './app.exception.js';
 import { defaultCodeForStatus } from './error-code.js';
 
 /**
- * 모든 예외를 `{ code, message, requestId, fields? }` 형태로 내려준다.
+ * 모든 예외를 `{ code, message, requestId, fields?, details? }` 형태로 내려준다.
  * 5xx는 내부 정보를 숨기고 스택을 로그로 남긴다. 로그의 requestId로 문의를 추적한다.
  */
 @Catch()
@@ -58,6 +58,7 @@ export function toErrorResponse(
         message: exception.message,
         requestId,
         ...(exception.fields && { fields: exception.fields }),
+        ...(exception.details && { details: exception.details }),
       },
     };
   }

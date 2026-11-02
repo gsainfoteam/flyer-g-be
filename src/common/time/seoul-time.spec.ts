@@ -1,6 +1,7 @@
 import {
   addMonthsInSeoul,
   addSeoulDays,
+  isSeoulMidnight,
   seoulDate,
   startOfSeoulDay,
 } from './seoul-time.js';
@@ -45,5 +46,13 @@ describe('seoulDate / startOfSeoulDay / addSeoulDays', () => {
     expect(addSeoulDays('2026-12-31', 1)).toBe('2027-01-01');
     expect(addSeoulDays('2026-03-01', -1)).toBe('2026-02-28');
     expect(addSeoulDays('2026-09-27', -89)).toBe('2026-06-30');
+  });
+});
+
+describe('isSeoulMidnight', () => {
+  it('서울 00:00 정각만 참이다', () => {
+    expect(isSeoulMidnight(new Date('2026-10-30T15:00:00.000Z'))).toBe(true);
+    expect(isSeoulMidnight(new Date('2026-10-31T00:00:00.000Z'))).toBe(false);
+    expect(isSeoulMidnight(new Date('2026-10-30T15:00:00.001Z'))).toBe(false);
   });
 });

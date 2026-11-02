@@ -1,5 +1,5 @@
 import { submissionTypeEnum } from '../../db/schema.js';
-import { dailySubmissionLimits, kindOf } from './index.js';
+import { dailySubmissionLimits, KIND_INPUT_FIELDS, kindOf } from './index.js';
 import { POSTER_KIND } from './poster.kind.js';
 
 const NOW = new Date('2026-07-29T06:30:00.000Z');
@@ -14,8 +14,17 @@ describe('SUBMISSION_KINDS', () => {
     },
   );
 
+  it.each(submissionTypeEnum.enumValues)(
+    '%s의 inputFields는 공통 목록 안에 있다',
+    (type) => {
+      for (const field of kindOf(type).inputFields) {
+        expect(KIND_INPUT_FIELDS).toContain(field);
+      }
+    },
+  );
+
   it('하루 한도는 한도가 있는 종류만 담는다', () => {
-    expect(dailySubmissionLimits()).toEqual({});
+    expect(dailySubmissionLimits()).toEqual({ EVENT_BANNER: 3 });
   });
 });
 

@@ -29,6 +29,11 @@ export function seoulDate(date: Date): string {
   return new Date(date.getTime() + SEOUL_OFFSET_MS).toISOString().slice(0, 10);
 }
 
+/** 서울 00:00 정각인가 */
+export function isSeoulMidnight(date: Date): boolean {
+  return startOfSeoulDay(seoulDate(date)).getTime() === date.getTime();
+}
+
 /** 서울 날짜(YYYY-MM-DD)의 00:00 KST 시각 */
 export function startOfSeoulDay(day: string): Date {
   return new Date(Date.parse(`${day}T00:00:00.000Z`) - SEOUL_OFFSET_MS);

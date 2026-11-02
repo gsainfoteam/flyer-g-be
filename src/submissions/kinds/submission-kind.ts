@@ -1,12 +1,112 @@
+import type { AssetsService } from '../../assets/assets.service.js';
 import type { FieldErrors } from '../../common/errors/app.exception.js';
-import type { SubmissionType } from '../../db/schema.js';
+import type { Database, Transaction } from '../../db/index.js';
+import type { Asset, SubmissionType, submissions } from '../../db/schema.js';
+import type { SubmissionDto } from '../dto/submission.dto.js';
+import type { CreateSubmissionDto } from '../dto/submission-input.dto.js';
+import type { SubmissionRow } from '../submissions.service.js';
+
+/** 신청 입력 중 종류마다 다른 부분. 공통 필드(type·기간·대상 위치·version)는 서비스가 다룬다 */
+export type KindInput = Pick<
+  CreateSubmissionDto,
+  | 'title'
+  | 'categoryId'
+  | 'assetId'
+  | 'detailUrl'
+  | 'organizerName'
+  | 'subtitle'
+  | 'location'
+  | 'description'
+  | 'eventBanner'
+>;
+
+export type KindInputField = keyof KindInput;
+
+export const KIND_INPUT_FIELDS: readonly KindInputField[] = [
+  'title',
+  'categoryId',
+  'assetId',
+  'detailUrl',
+  'organizerName',
+  'subtitle',
+  'location',
+  'description',
+  'eventBanner',
+];
+
+/** submissions 행 중 종류가 정하는 컬럼 */
+export type KindColumns = Required<
+  Pick<
+    typeof submissions.$inferInsert,
+    | 'title'
+    | 'categoryId'
+    | 'assetId'
+    | 'detailUrl'
+    | 'ziggleNoticeId'
+    | 'organizerName'
+    | 'subtitle'
+    | 'location'
+    | 'description'
+  >
+>;
+
+/** 응답 중 종류가 채우는 부분. 그 종류와 상관없는 필드는 null이다 */
+export type KindResponse = Pick<
+  SubmissionDto,
+  | 'categoryId'
+  | 'categoryName'
+  | 'assetId'
+  | 'posterUrl'
+  | 'posterThumbUrl'
+  | 'posterKind'
+  | 'posterWidth'
+  | 'posterHeight'
+  | 'posterDurationMs'
+  | 'posterVideoUrl'
+  | 'detailUrl'
+  | 'ziggleNoticeId'
+  | 'organizerName'
+  | 'subtitle'
+  | 'location'
+  | 'description'
+  | 'eventBanner'
+>;
+
+/** 종류 정의가 DB·다른 서비스를 직접 모르게 서비스가 넘겨 주는 것 */
+export interface KindContext {
+  /** 본인 asset. 남의 것이거나 없으면 null */
+  findOwnedAsset(assetId: string): Promise<Asset | null>;
+  isActiveCategory(categoryId: string): Promise<boolean>;
+}
+
+export type MediaUrls = Pick<AssetsService, 'variantUrls' | 'videoUrl'>;
+
+/** 지금 저장된 내용. 수정할 때 입력에 없는 필드는 이 값을 따른다 */
+export type CurrentContent<Detail> = { columns: KindColumns; detail: Detail };
+
+export type ResolvedContent<Detail> = {
+  errors: FieldErrors;
+  columns: KindColumns;
+  detail: Detail;
+};
+
+/** 종류만의 상세 테이블 (신청과 1:1) */
+export interface DetailStore<Detail> {
+  load(db: Database, ids: string[]): Promise<Map<string, Detail>>;
+  /** 없으면 넣고 있으면 바꾼다 */
+  save(tx: Transaction, submissionId: string, detail: Detail): Promise<void>;
+  equals(a: Detail, b: Detail): boolean;
+}
 
 /**
  * 심사받는 컨텐츠 종류 하나의 규칙. 공통 서비스는 종류를 모른 채 이 정의에 맡긴다.
  * 종류를 더할 때는 정의 파일을 만들고 kinds/index.ts의 SUBMISSION_KINDS에 한 줄 더한다.
  */
-export interface SubmissionKind {
+export interface SubmissionKind<Detail = unknown> {
   readonly type: SubmissionType;
+
+  /** 이 종류가 받는 입력 필드. 그 밖의 종류별 필드를 보내면 422다 */
+  readonly inputFields: readonly KindInputField[];
 
   /**
    * 게시 기간 규칙. 검토 대기에 들어갈 때(생성·재제출)와 기간을 바꿀 때 검사한다.
@@ -16,4 +116,64 @@ export interface SubmissionKind {
 
   /** 사용자당 서울 하루 생성 한도. 없으면 null. GET /signage/config에도 나간다 */
   readonly dailyLimit: number | null;
+
+  /**
+   * 입력을 저장할 값으로 바꾸고 검증한다. 생성이면 current가 null이다.
+   * 참조(카테고리·asset)는 current와 달라진 것만 검사한다. 이미 연결된 값은 그대로 둘 수 있다.
+   */
+  resolve(
+    input: KindInput,
+    current: CurrentContent<Detail> | null,
+    ctx: KindContext,
+  ): Promise<ResolvedContent<Detail>>;
+
+  /** 상세 테이블. 없으면 submissions 컬럼만 쓴다 (detail은 null) */
+  readonly details: DetailStore<Detail> | null;
+
+  toResponse(
+    row: SubmissionRow,
+    detail: Detail,
+    media: MediaUrls,
+  ): KindResponse;
+}
+
+/** 다른 종류의 필드는 비운다. 정의마다 필요한 것만 덮어쓴다 */
+export const EMPTY_KIND_COLUMNS: KindColumns = {
+  title: '',
+  categoryId: null,
+  assetId: null,
+  detailUrl: null,
+  ziggleNoticeId: null,
+  organizerName: null,
+  subtitle: null,
+  location: null,
+  description: null,
+};
+
+export const EMPTY_KIND_RESPONSE: KindResponse = {
+  categoryId: null,
+  categoryName: null,
+  assetId: null,
+  posterUrl: null,
+  posterThumbUrl: null,
+  posterKind: null,
+  posterWidth: null,
+  posterHeight: null,
+  posterDurationMs: null,
+  posterVideoUrl: null,
+  detailUrl: null,
+  ziggleNoticeId: null,
+  organizerName: null,
+  subtitle: null,
+  location: null,
+  description: null,
+  eventBanner: null,
+};
+
+/** 수정 입력: undefined면 지금 값, null이면 비움 */
+export function patched<T>(
+  value: T | null | undefined,
+  current: T | null,
+): T | null {
+  return value === undefined ? current : value;
 }

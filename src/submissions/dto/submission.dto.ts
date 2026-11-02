@@ -7,6 +7,7 @@ import {
   type SubmissionStatus,
   type SubmissionType,
 } from '../../db/schema.js';
+import { EventBannerDto } from './event-banner.dto.js';
 
 const STATUSES = submissionStatusEnum.enumValues;
 
@@ -39,54 +40,87 @@ export class SubmissionDto {
   })
   type: SubmissionType;
 
-  @ApiProperty({ example: '겨울 정기 공연 〈한밤의 물리학〉' })
+  @ApiProperty({
+    description:
+      '제목. 포스터는 신청자가 입력하고, 다른 종류는 서버가 목록용으로 만든다 (이벤트 배너: "생일 · 지민에게")',
+    example: '겨울 정기 공연 〈한밤의 물리학〉',
+  })
   title: string;
 
-  @ApiProperty({ example: 'performance' })
-  categoryId: string;
-
-  @ApiProperty({ description: '카테고리 표시 이름', example: '공연' })
-  categoryName: string;
-
-  @ApiProperty({ example: '0f8e2c1a-5b7d-4e21-9a0c-1d8e5f6b2c34' })
-  assetId: string;
+  @ApiProperty({
+    description: '포스터만. 다른 종류는 null',
+    type: String,
+    nullable: true,
+    example: 'performance',
+  })
+  categoryId: string | null;
 
   @ApiProperty({
-    description: '포스터 미리보기 (1280x1280 안). 영상은 대표 프레임',
-    example:
-      'https://gsainfoteam-icarus-flyer-g-production.s3.ap-northeast-2.amazonaws.com/assets/0f8e2c1a-.../preview.webp',
+    description: '카테고리 표시 이름. 포스터가 아니면 null',
+    type: String,
+    nullable: true,
+    example: '공연',
   })
-  posterUrl: string;
-
-  @ApiProperty({
-    description: '포스터 썸네일 (400x400 안). 목록 카드용',
-    example:
-      'https://gsainfoteam-icarus-flyer-g-production.s3.ap-northeast-2.amazonaws.com/assets/0f8e2c1a-.../thumb.webp',
-  })
-  posterThumbUrl: string;
-
-  @ApiProperty({
-    description: '포스터 종류. VIDEO면 posterVideoUrl로 재생한다',
-    enum: ['IMAGE', 'VIDEO'],
-    example: 'IMAGE',
-  })
-  posterKind: 'IMAGE' | 'VIDEO';
+  categoryName: string | null;
 
   @ApiProperty({
     description:
-      '포스터 원본 가로(px, EXIF·영상 회전 정보 적용 후). 미리보기는 1280px 안으로 줄였으므로 해상도 판단은 이 값으로 한다',
+      '포스터 asset. 포스터가 아니면 null (이벤트 배너의 이미지·사진은 eventBanner에 있다)',
+    type: String,
+    nullable: true,
+    example: '0f8e2c1a-5b7d-4e21-9a0c-1d8e5f6b2c34',
+  })
+  assetId: string | null;
+
+  @ApiProperty({
+    description:
+      '포스터 미리보기 (1280x1280 안). 영상은 대표 프레임. 포스터가 아니면 null',
+    type: String,
+    nullable: true,
+    example:
+      'https://gsainfoteam-icarus-flyer-g-production.s3.ap-northeast-2.amazonaws.com/assets/0f8e2c1a-.../preview.webp',
+  })
+  posterUrl: string | null;
+
+  @ApiProperty({
+    description:
+      '포스터 썸네일 (400x400 안). 목록 카드용. 포스터가 아니면 null',
+    type: String,
+    nullable: true,
+    example:
+      'https://gsainfoteam-icarus-flyer-g-production.s3.ap-northeast-2.amazonaws.com/assets/0f8e2c1a-.../thumb.webp',
+  })
+  posterThumbUrl: string | null;
+
+  @ApiProperty({
+    description:
+      '포스터 종류. VIDEO면 posterVideoUrl로 재생한다. 포스터가 아니면 null',
+    enum: ['IMAGE', 'VIDEO'],
+    nullable: true,
+    example: 'IMAGE',
+  })
+  posterKind: 'IMAGE' | 'VIDEO' | null;
+
+  @ApiProperty({
+    description:
+      '포스터 원본 가로(px, EXIF·영상 회전 정보 적용 후). 미리보기는 1280px 안으로 줄였으므로 해상도 판단은 이 값으로 한다. 포스터가 아니면 null',
+    type: Number,
+    nullable: true,
     example: 1536,
   })
-  posterWidth: number;
+  posterWidth: number | null;
 
   @ApiProperty({
-    description: '포스터 원본 세로(px, EXIF·영상 회전 정보 적용 후)',
+    description:
+      '포스터 원본 세로(px, EXIF·영상 회전 정보 적용 후). 포스터가 아니면 null',
+    type: Number,
+    nullable: true,
     example: 2048,
   })
-  posterHeight: number;
+  posterHeight: number | null;
 
   @ApiProperty({
-    description: '영상 포스터의 길이(ms). 이미지는 null',
+    description: '영상 포스터의 길이(ms). 이미지나 포스터가 아니면 null',
     type: Number,
     nullable: true,
     example: null,
@@ -95,7 +129,7 @@ export class SubmissionDto {
 
   @ApiProperty({
     description:
-      '영상 포스터의 재생용 mp4 (H.264·AAC, 1920x1080 안). 검토 화면에서 재생한다. 이미지는 null',
+      '영상 포스터의 재생용 mp4 (H.264·AAC, 1920x1080 안). 검토 화면에서 재생한다. 이미지나 포스터가 아니면 null',
     type: String,
     nullable: true,
     example: null,
@@ -103,6 +137,7 @@ export class SubmissionDto {
   posterVideoUrl: string | null;
 
   @ApiProperty({
+    description: '상세 링크(QR). 포스터만. 다른 종류는 null',
     type: String,
     nullable: true,
     example: 'https://ziggle.gistory.me/notice/1041',
@@ -153,6 +188,13 @@ export class SubmissionDto {
 
   @ApiProperty({ type: String, nullable: true, example: null })
   description: string | null;
+
+  @ApiProperty({
+    description: '이벤트 배너의 내용. 다른 종류는 null',
+    type: EventBannerDto,
+    nullable: true,
+  })
+  eventBanner: EventBannerDto | null;
 
   @ApiProperty({
     description: '낙관적 잠금 버전. 수정·상태 변경 요청에 그대로 실어 보낸다',
@@ -227,6 +269,9 @@ export class SubmissionTypeSummariesDto implements Record<
 > {
   @ApiProperty({ type: SubmissionTypeSummaryDto })
   POSTER: SubmissionTypeSummaryDto;
+
+  @ApiProperty({ type: SubmissionTypeSummaryDto })
+  EVENT_BANNER: SubmissionTypeSummaryDto;
 }
 
 export class SubmissionSummaryDto {
