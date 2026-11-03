@@ -47,7 +47,18 @@ describe('lineupSettingsSchema', () => {
           infoBar: ['A', 'B', 'C', 'D', 'E'].map(entry),
         }),
       ),
-    ).toEqual([['infoBar', '정보줄은 4칸까지입니다.']]);
+    ).toContainEqual(['infoBar', '정보줄은 4칸까지입니다.']);
+  });
+
+  it('정보줄 item은 운영 컨텐츠 종류의 infoBarItem 중 하나다', () => {
+    expect(
+      issuesOf(
+        lineupSettingsSchema.safeParse({
+          ...DEFAULT_LINEUP_SETTINGS,
+          infoBar: [{ item: 'WEATHER', programId: 'prg_weather' }],
+        }),
+      ),
+    ).toEqual([['infoBar.0.item', '정보줄 항목은 DDAY 중 하나여야 합니다.']]);
   });
 });
 

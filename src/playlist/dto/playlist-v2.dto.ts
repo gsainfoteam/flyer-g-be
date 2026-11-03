@@ -127,14 +127,17 @@ export class PlaylistSubmissionsDto {
 }
 
 export class PlaylistProgramDto {
-  @ApiProperty({ description: '운영 컨텐츠 종류', example: 'CAFETERIA' })
+  @ApiProperty({
+    description: '운영 컨텐츠 종류 (GET /signage/program-types)',
+    example: 'DAILY_PILLAR',
+  })
   type: string;
 
-  @ApiProperty({ example: '제2학생식당' })
+  @ApiProperty({ example: '오늘의 일진' })
   name: string;
 
   @ApiProperty({
-    description: '운영자가 정한 설정 (종류마다 모양이 다르다)',
+    description: '운영자가 정한 설정. 종류의 paramsSchema 모양이다',
     type: 'object',
     additionalProperties: true,
     example: {},
@@ -142,12 +145,19 @@ export class PlaylistProgramDto {
   params: Record<string, unknown>;
 
   @ApiProperty({
-    description:
-      '서버가 만든 데이터(학식 메뉴, 퀴즈 문제…). 운영 컨텐츠 종류가 생기는 배포(⑩) 전에는 null',
+    description: `서버가 만든 데이터. dataSource가 NONE인 종류(DDAY·EXAM_CHEER·CLICK_BATTLE)는 null
+- DAILY_PILLAR: { date: 서울 날짜, name: '신사', hanja: '辛巳', stem: '신', branch: '사', animal: '뱀' }. 서울 자정에 바뀐다`,
     type: 'object',
     additionalProperties: true,
     nullable: true,
-    example: null,
+    example: {
+      date: '2026-11-03',
+      name: '신사',
+      hanja: '辛巳',
+      stem: '신',
+      branch: '사',
+      animal: '뱀',
+    },
   })
   data: Record<string, unknown> | null;
 }

@@ -29,6 +29,10 @@ export const AUDIT_ACTIONS = [
   // 라이브 설정·해제. target은 DEVICE 또는 GROUP이다
   'LIVE_SET',
   'LIVE_CLEARED',
+  // 운영 컨텐츠. target은 PROGRAM이다
+  'PROGRAM_CREATED',
+  'PROGRAM_UPDATED',
+  'PROGRAM_DELETED',
   'USER_ROLE_GRANTED',
   'USER_ROLE_REVOKED',
 ] as const;
@@ -39,6 +43,7 @@ export const AUDIT_TARGET_TYPES = [
   'DEVICE',
   'GROUP',
   'USER',
+  'PROGRAM',
 ] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 

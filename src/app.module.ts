@@ -10,6 +10,7 @@ import { validateEnv } from './config/env.js';
 import { DbModule } from './db/db.module.js';
 import { DeviceTelemetryModule } from './device-telemetry/device-telemetry.module.js';
 import { DevicesModule } from './devices/devices.module.js';
+import { ProgramsModule } from './programs/programs.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { HealthModule } from './health/health.module.js';
 import { JobsModule } from './jobs/jobs.module.js';
@@ -38,6 +39,7 @@ import { TargetGroupsModule } from './target-groups/target-groups.module.js';
     TargetGroupsModule,
     LineupsModule,
     LiveModule,
+    ProgramsModule,
     AssetsModule,
     SubmissionsModule,
     StoriesModule,

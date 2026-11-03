@@ -14,6 +14,7 @@ import {
   devices,
   submissions,
   submissionTypeEnum,
+  programs,
   targetGroups,
   users,
 } from '../db/schema.js';
@@ -151,7 +152,7 @@ export class AuditLogsService {
   }
 
   /**
-   * 대상의 현재 표시 이름 (신청 제목, 기기 이름, 그룹 이름, 사용자 이름). 로그를 쓸 때가 아니라 지금 값이다.
+   * 대상의 현재 표시 이름 (신청 제목, 기기 이름, 그룹 이름, 사용자 이름, 운영 컨텐츠 이름). 로그를 쓸 때가 아니라 지금 값이다.
    * target_id는 문자열이라 JOIN하면 uuid 인덱스를 못 쓰므로, 페이지를 받은 뒤 종류별로 한 번씩 찾는다.
    */
   private async targetTitlesOf(
@@ -171,9 +172,10 @@ export class AuditLogsService {
     const deviceIds = uuidsOf('DEVICE');
     const groupIds = idsOf('GROUP');
     const userIds = uuidsOf('USER');
+    const programIds = idsOf('PROGRAM');
 
-    const [submissionRows, deviceRows, groupRows, userRows] = await Promise.all(
-      [
+    const [submissionRows, deviceRows, groupRows, userRows, programRows] =
+      await Promise.all([
         submissionIds.length
           ? this.db
               .select({ id: submissions.id, title: submissions.title })
@@ -198,8 +200,13 @@ export class AuditLogsService {
               .from(users)
               .where(inArray(users.id, userIds))
           : [],
-      ],
-    );
+        programIds.length
+          ? this.db
+              .select({ id: programs.id, title: programs.name })
+              .from(programs)
+              .where(inArray(programs.id, programIds))
+          : [],
+      ]);
 
     const titles = new Map<string, string>();
     for (const [targetType, rows] of [
@@ -207,6 +214,7 @@ export class AuditLogsService {
       ['DEVICE', deviceRows],
       ['GROUP', groupRows],
       ['USER', userRows],
+      ['PROGRAM', programRows],
     ] as const) {
       for (const row of rows) {
         titles.set(titleKey({ targetType, targetId: row.id }), row.title);

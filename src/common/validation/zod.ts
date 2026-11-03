@@ -29,6 +29,20 @@ export function parseOrFail<Schema extends z.ZodType>(
 }
 
 /**
+ * 모르는 키를 받지 않는 객체. 모르는 키면 그 키 이름을, 그 밖의 모양 오류면 message를 준다.
+ */
+export const strictObject = <Shape extends z.ZodRawShape>(
+  shape: Shape,
+  message: string,
+) =>
+  z.strictObject(shape, {
+    error: (issue) =>
+      issue.code === 'unrecognized_keys'
+        ? `알 수 없는 항목이 있습니다: ${issue.keys.join(', ')}`
+        : message,
+  });
+
+/**
  * zod 스키마로 본문을 검증하는 파이프. 파라미터 타입을 클래스가 아닌 타입으로 두면
  * 전역 ValidationPipe는 건너뛰고 이 파이프만 검증한다.
  */

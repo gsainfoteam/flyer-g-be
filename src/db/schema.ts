@@ -543,7 +543,7 @@ export const deviceTargetGroups = pgTable(
 export type Device = typeof devices.$inferSelect;
 
 /**
- * 운영 컨텐츠(D-day·운세·학식…). 종류와 params는 ⑩에서 채운다.
+ * 운영 컨텐츠(D-day·운세·학식…). type은 src/programs/program-types.ts의 종류이고, params 모양은 그 종류가 정한다.
  * 편성 블록이 FK로 가리키므로 테이블을 먼저 둔다.
  */
 export const programs = pgTable('programs', {

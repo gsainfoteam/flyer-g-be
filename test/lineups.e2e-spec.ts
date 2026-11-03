@@ -41,13 +41,13 @@ describe('그룹 편성 (e2e)', () => {
 
     admin = await createTestUser(app, { roles: ['SUPER_ADMIN'] });
     reviewer = await createTestUser(app, { roles: ['REVIEWER'] });
-    // 운영 컨텐츠 API(⑩) 전이라 직접 넣는다
+    // 준비를 줄이려고 API를 거치지 않고 넣는다
     const now = new Date();
     await db.insert(programs).values({
       id: programId,
-      type: 'DDAY',
-      name: 'E2E D-day',
-      params: {},
+      type: 'CLICK_BATTLE',
+      name: 'E2E 클릭 배틀',
+      params: { rounds: 3 },
       createdAt: now,
       updatedAt: now,
     });
@@ -294,11 +294,8 @@ describe('그룹 편성 (e2e)', () => {
       version: lineup.version,
       settings: {
         ...lineup.settings,
-        // ⑩ 전에는 정보줄에 들어갈 수 있는 운영 컨텐츠 종류가 없다
-        infoBar: [
-          { item: 'DDAY', programId },
-          { item: 'WEATHER', programId: 'prg_nope' },
-        ],
+        // 클릭 배틀은 정보줄에 들어갈 수 없는 종류다
+        infoBar: [{ item: 'DDAY', programId }],
       },
       blocks: [
         posters,
@@ -314,7 +311,6 @@ describe('그룹 편성 (e2e)', () => {
       'blocks.3.programId': '없는 운영 컨텐츠입니다.',
       'settings.infoBar.0.programId':
         '이 운영 컨텐츠는 정보줄의 DDAY 칸에 쓸 수 없습니다.',
-      'settings.infoBar.1.programId': '없는 운영 컨텐츠입니다.',
     });
     expect((await getLineup(groupId)).version).toBe(lineup.version);
   });
