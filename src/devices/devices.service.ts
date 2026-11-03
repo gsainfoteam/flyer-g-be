@@ -20,6 +20,8 @@ import {
 import { isQuietAt } from '../lineups/quiet-hours.js';
 import type { LiveDto } from '../live/dto/live.dto.js';
 import { liveDtoOf, LiveService } from '../live/live.service.js';
+import { DeviceControlService } from '../realtime/device-control.service.js';
+import { SignageChanges } from '../realtime/signage-changes.js';
 import { TargetGroupsService } from '../target-groups/target-groups.service.js';
 import { generateDeviceToken, hashDeviceToken } from './auth/device-token.js';
 import type {
@@ -29,6 +31,7 @@ import type {
 import type {
   DeviceDto,
   DeviceListDto,
+  DeviceReloadDto,
   DeviceSessionDto,
   DeviceStatus,
   DeviceWithTokenDto,
@@ -46,6 +49,8 @@ export class DevicesService {
     private readonly lineupsService: LineupsService,
     private readonly liveService: LiveService,
     private readonly auditService: AuditService,
+    private readonly deviceControl: DeviceControlService,
+    private readonly signageChanges: SignageChanges,
   ) {}
 
   async list(): Promise<DeviceListDto> {
@@ -80,6 +85,7 @@ export class DevicesService {
         groupIds: groupIdsByDevice.get(row.id) ?? [],
         settings: effectiveSettings(row, settings),
         live: liveDtoOf(live.get(row.id) ?? null),
+        controlConnected: this.deviceControl.isConnected(row.id),
         now,
       }),
     );
@@ -189,6 +195,11 @@ export class DevicesService {
         at: now,
       });
     });
+    if (dto.isActive === false) {
+      this.deviceControl.disconnect(id);
+    } else {
+      this.signageChanges.emit({ scope: 'DEVICE', id });
+    }
 
     return this.findOne(id);
   }
@@ -215,8 +226,16 @@ export class DevicesService {
         at: now,
       });
     });
+    // 이전 토큰으로 연 제어 채널도 끊는다
+    this.deviceControl.disconnect(id);
 
     return { ...(await this.findOne(id)), token };
+  }
+
+  /** 연결된 TV에 새로고침 명령을 보낸다. 끊겨 있으면 delivered: false */
+  async reload(id: string): Promise<DeviceReloadDto> {
+    await this.findRow(id);
+    return { delivered: this.deviceControl.reload(id) };
   }
 
   session(device: Device): DeviceSessionDto {
@@ -325,11 +344,13 @@ function toDto(
     groupIds,
     settings,
     live,
+    controlConnected,
     now,
   }: {
     groupIds: string[];
     settings: LineupSettings;
     live: LiveDto | null;
+    controlConnected: boolean;
     now: Date;
   },
 ): DeviceDto {
@@ -352,6 +373,7 @@ function toDto(
     now: device.nowPlaying,
     live,
     status: statusOf(device, settings, now),
+    controlConnected,
     layout: {
       type: settings.posterLayout,
       rotationSeconds: settings.rotationSeconds,

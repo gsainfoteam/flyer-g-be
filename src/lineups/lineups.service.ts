@@ -20,6 +20,7 @@ import {
   type LineupBlock,
 } from '../db/schema.js';
 import { infoBarItemOf } from '../programs/program-types.js';
+import { SignageChanges } from '../realtime/signage-changes.js';
 import type { LineupDto } from './dto/lineup.dto.js';
 import {
   DEFAULT_LINEUP_SETTINGS,
@@ -56,6 +57,7 @@ export class LineupsService {
   constructor(
     @Inject(DB_CONNECTION) private readonly db: Database,
     private readonly auditService: AuditService,
+    private readonly signageChanges: SignageChanges,
   ) {}
 
   async get(groupId: string): Promise<LineupDto> {
@@ -152,6 +154,7 @@ export class LineupsService {
         at: now,
       });
     });
+    this.signageChanges.emit({ scope: 'GROUP', id: groupId });
     return this.get(groupId);
   }
 

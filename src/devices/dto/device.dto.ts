@@ -144,6 +144,13 @@ export class DeviceDto {
 
   @ApiProperty({
     description:
+      '제어 채널(/devices/ws)이 연결돼 있는지. false면 새로고침 명령과 변경 알림이 가지 않고, TV는 refreshAfterSeconds마다 편성을 다시 받을 때 반영한다',
+    example: true,
+  })
+  controlConnected: boolean;
+
+  @ApiProperty({
+    description:
       '**읽기 전용, 지원 중단.** 편성 그룹 설정에 기기 예외를 덮은 실제 값(posterLayout, rotationSeconds). 정리 배포에서 지운다',
     type: DeviceLayoutDto,
     deprecated: true,
@@ -182,6 +189,16 @@ export class DeviceListDto {
 
   @ApiProperty({ description: '이름순', type: [DeviceDto] })
   items: DeviceDto[];
+}
+
+/** 새로고침 명령 결과 */
+export class DeviceReloadDto {
+  @ApiProperty({
+    description:
+      '연결된 TV에 보냈는지. false면 제어 채널이 끊겨 있어 보내지 못했다(나중에 다시 보내지 않는다)',
+    example: true,
+  })
+  delivered: boolean;
 }
 
 /** 등록·재발급 응답. 토큰 원문은 이때 한 번만 보여 준다. */

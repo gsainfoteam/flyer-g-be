@@ -1,5 +1,6 @@
 /**
- * TV 게임의 메시지 중계. 방 하나는 TV(호스트) 하나와 폰(참가자) 여럿이다.
+ * TV 게임의 메시지 중계. 방 하나는 TV(호스트) 하나와 폰(참가자) 여럿이다. 방 id는 기기 id다.
+ * 호스트 자리는 TV의 제어 연결(`/devices/ws`)이기도 해서, 제어 프레임도 이 방을 통해 보낸다.
  *
  * 게임 규칙은 모른다. 점수 계산·시간·입장 마감은 TV가 하고, 서버는 메시지를
  * 옮기기만 한다. 참가자 메시지는 호스트에게, 호스트 메시지는 방의 모든 참가자에게 간다.
@@ -53,11 +54,16 @@ export const RELAY_CLOSE = {
 export type PlayerFrame =
   { type: 'host'; online: boolean } | { type: 'message'; data: unknown };
 
-/** 서버 → 호스트 */
+/** 서버 → TV 제어 프레임. 게임과 상관없이 `/devices/ws`로 간다 */
+export type ControlFrame = { type: 'program-changed' } | { type: 'reload' };
+
+/** 서버 → 호스트(TV) */
 export type HostFrame =
   | { type: 'ready' }
+  | { type: 'join'; from: string }
   | { type: 'message'; from: string; data: unknown }
-  | { type: 'left'; from: string };
+  | { type: 'left'; from: string }
+  | ControlFrame;
 
 interface Room {
   host: RelaySocket | null;
@@ -80,6 +86,10 @@ export class GameRelay {
     const room = this.rooms.get(roomId);
     if (room && !room.host && room.players.size === 0)
       this.rooms.delete(roomId);
+  }
+
+  private toHostOf(room: Room, frame: HostFrame) {
+    room.host?.send(JSON.stringify(frame));
   }
 
   private toPlayers(room: Room, frame: PlayerFrame) {
@@ -107,6 +117,7 @@ export class GameRelay {
       return false;
     }
     room.players.set(socket.id, socket);
+    this.toHostOf(room, { type: 'join', from: socket.id });
     socket.send(
       JSON.stringify({
         type: 'host',
@@ -125,9 +136,7 @@ export class GameRelay {
       this.toPlayers(room, { type: 'host', online: false });
     } else if (room.players.get(socket.id) === socket) {
       room.players.delete(socket.id);
-      room.host?.send(
-        JSON.stringify({ type: 'left', from: socket.id } satisfies HostFrame),
-      );
+      this.toHostOf(room, { type: 'left', from: socket.id });
     }
     this.dropIfEmpty(roomId);
   }
@@ -143,13 +152,31 @@ export class GameRelay {
   fromPlayer(roomId: string, socket: RelaySocket, data: unknown): void {
     const room = this.rooms.get(roomId);
     if (!room?.host || room.players.get(socket.id) !== socket) return;
-    room.host.send(
-      JSON.stringify({
-        type: 'message',
-        from: socket.id,
-        data,
-      } satisfies HostFrame),
-    );
+    this.toHostOf(room, { type: 'message', from: socket.id, data });
+  }
+
+  /** 연결된 TV(호스트)가 있는 방, 곧 기기 id들 */
+  hostIds(): string[] {
+    return [...this.rooms]
+      .filter(([, room]) => room.host !== null)
+      .map(([roomId]) => roomId);
+  }
+
+  hasHost(roomId: string): boolean {
+    return (this.rooms.get(roomId)?.host ?? null) !== null;
+  }
+
+  /** TV에 제어 프레임을 보낸다. 연결된 TV가 없으면 false */
+  toHost(roomId: string, frame: ControlFrame): boolean {
+    const room = this.rooms.get(roomId);
+    if (!room?.host) return false;
+    this.toHostOf(room, frame);
+    return true;
+  }
+
+  /** TV 연결을 닫는다(토큰 교체·기기 끔). 닫힌 소켓의 close 이벤트가 방에서 뺀다 */
+  closeHost(roomId: string, code: number, reason: string): void {
+    this.rooms.get(roomId)?.host?.close(code, reason);
   }
 
   /** 테스트·지표용 */

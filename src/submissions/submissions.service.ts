@@ -28,6 +28,7 @@ import { decodeCursor } from '../common/pagination/cursor.js';
 import { toPage, type Page } from '../common/pagination/page.js';
 import { seoulDate, startOfSeoulDay } from '../common/time/seoul-time.js';
 import { violatesUnique } from '../db/errors.js';
+import { SignageChanges } from '../realtime/signage-changes.js';
 import { DB_CONNECTION, type Database, type Transaction } from '../db/index.js';
 import {
   assets,
@@ -162,6 +163,7 @@ export class SubmissionsService {
     private readonly categoriesService: CategoriesService,
     private readonly targetGroupsService: TargetGroupsService,
     private readonly auditService: AuditService,
+    private readonly signageChanges: SignageChanges,
   ) {}
 
   /** 생성과 제출을 한 번에 한다. 만들어지면 바로 검토 대기다. */
@@ -569,6 +571,7 @@ export class SubmissionsService {
         at: now,
       });
     });
+    this.signageChanges.emit({ scope: 'ALL' });
     return this.detail(id, now, user);
   }
 

@@ -20,6 +20,10 @@ import {
   users,
   type LiveScope,
 } from '../db/schema.js';
+import {
+  SignageChanges,
+  type SignageChange,
+} from '../realtime/signage-changes.js';
 import { NO_LIVE, type LiveDto } from './dto/live.dto.js';
 import {
   MAX_GAME_DURATION_MS,
@@ -40,6 +44,7 @@ export class LiveService {
   constructor(
     @Inject(DB_CONNECTION) private readonly db: Database,
     private readonly auditService: AuditService,
+    private readonly signageChanges: SignageChanges,
   ) {}
 
   /** 그 범위에 저장된 라이브. until이 지난 부분은 뺀다 */
@@ -89,6 +94,7 @@ export class LiveService {
         at: now,
       });
     });
+    this.signageChanges.emit(changeOf(scope, scopeId));
     return this.get(scope, scopeId);
   }
 
@@ -100,7 +106,7 @@ export class LiveService {
   ): Promise<void> {
     await this.assertTarget(scope, scopeId);
     const now = new Date();
-    await this.db.transaction(async (tx) => {
+    const cleared = await this.db.transaction(async (tx) => {
       const deleted = await tx
         .delete(liveStates)
         .where(
@@ -115,7 +121,11 @@ export class LiveService {
           at: now,
         });
       }
+      return deleted.length > 0;
     });
+    if (cleared) {
+      this.signageChanges.emit(changeOf(scope, scopeId));
+    }
   }
 
   /**
@@ -282,6 +292,10 @@ function timeErrors(
     fields['alert.until'] = '끝 시각은 지금보다 뒤여야 합니다.';
   }
   return fields;
+}
+
+function changeOf(scope: LiveScope, id: string): SignageChange {
+  return scope === 'DEVICE' ? { scope: 'DEVICE', id } : { scope: 'GROUP', id };
 }
 
 export function liveDtoOf(layer: LiveLayer | null): LiveDto | null {

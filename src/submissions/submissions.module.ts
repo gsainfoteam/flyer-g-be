@@ -3,11 +3,18 @@ import { AssetsModule } from '../assets/assets.module.js';
 import { AuditModule } from '../audit/audit.module.js';
 import { CategoriesModule } from '../categories/categories.module.js';
 import { TargetGroupsModule } from '../target-groups/target-groups.module.js';
+import { RealtimeModule } from '../realtime/realtime.module.js';
 import { SubmissionsController } from './submissions.controller.js';
 import { SubmissionsService } from './submissions.service.js';
 
 @Module({
-  imports: [AssetsModule, AuditModule, CategoriesModule, TargetGroupsModule],
+  imports: [
+    AssetsModule,
+    AuditModule,
+    CategoriesModule,
+    RealtimeModule,
+    TargetGroupsModule,
+  ],
   controllers: [SubmissionsController],
   providers: [SubmissionsService],
   exports: [SubmissionsService],
