@@ -101,6 +101,7 @@ export class AuditLogDto {
   @ApiProperty({
     description: `행위. 신청: SUBMISSION_CREATED, _UPDATED, _RESUBMITTED, _CANCELED, _APPROVED, _REJECTED, _SUSPENDED, _SCHEDULED, _PUBLISHED, _ENDED, STORY_AUTHOR_REVEALED
 기기: DEVICE_REGISTERED, DEVICE_UPDATED, DEVICE_TOKEN_ROTATED
+라이브: LIVE_SET, LIVE_CLEARED (target DEVICE 또는 GROUP)
 위치 그룹: GROUP_CREATED, GROUP_UPDATED, GROUP_DELETED, LINEUP_UPDATED(그룹 편성 저장)
 사용자 역할: USER_ROLE_GRANTED, USER_ROLE_REVOKED (SUPER_ADMIN만 볼 수 있다)
 
@@ -110,6 +111,7 @@ export class AuditLogDto {
 - STORY_AUTHOR_REVEALED: 운영자가 제보 작성자를 열람했다. actor가 열람한 운영자이고, 작성자는 metadata에도 없다
 - GROUP_* metadata: _CREATED·_DELETED는 { name }, _UPDATED는 { changes: { name?: { from, to }, isHidden?: { from, to } } }
 - LINEUP_UPDATED metadata: { version, blockCount } (저장 뒤 version)
+- LIVE_SET metadata: { main, alert } (저장한 내용). LIVE_CLEARED는 metadata 없음
 - USER_ROLE_* metadata: { role } (REVIEWER 또는 SUPER_ADMIN). targetId는 역할이 바뀐 사용자`,
     example: 'SUBMISSION_APPROVED',
   })

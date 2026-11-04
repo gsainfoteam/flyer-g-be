@@ -8,6 +8,7 @@
 
 import { sql } from 'drizzle-orm';
 import type { NowPlaying } from '../devices/dto/now-playing.dto.js';
+import type { LiveAlert, LiveMain } from '../live/live-schema.js';
 import type {
   BlockSchedule,
   DeviceOverrides,
@@ -617,6 +618,30 @@ export const lineupBlocks = pgTable(
 );
 
 export type LineupBlock = typeof lineupBlocks.$inferSelect;
+
+export const liveScopeEnum = pgEnum('live_scope', ['DEVICE', 'GROUP']);
+export type LiveScope = (typeof liveScopeEnum.enumValues)[number];
+
+/**
+ * 라이브 상태(src/live/live-schema.ts). 범위(기기·그룹)마다 하나다. 기기 값이 그룹 값보다 우선한다.
+ * until이 지난 것은 지우지 않고 읽을 때 뺀다. 범위가 둘이라 FK가 없다. 그룹을 지울 때 같이 지운다.
+ */
+export const liveStates = pgTable(
+  'live_states',
+  {
+    scope: liveScopeEnum('scope').notNull(),
+    scopeId: varchar('scope_id', { length: 64 }).notNull(),
+    main: jsonb('main').$type<LiveMain>(),
+    alert: jsonb('alert').$type<LiveAlert>(),
+    setBy: uuid('set_by')
+      .notNull()
+      .references(() => users.id),
+    setAt: timestamp('set_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.scope, table.scopeId] })],
+);
+
+export type LiveState = typeof liveStates.$inferSelect;
 
 /**
  * 노출이 보인 자리. WALL: 벽에 작게, SPOTLIGHT: 크게 보기, STRIP: 띠 가운데,

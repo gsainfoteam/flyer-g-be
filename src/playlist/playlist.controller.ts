@@ -71,7 +71,7 @@ v2
 - 편성 그룹의 편성에 기기 예외를 덮은 \`settings\`·\`blocks\`(꺼진 블록은 뺀다)
 - \`submissions\`: 종류별(POSTER·EVENT_BANNER·STORY) 게시 중인 신청. 제보에는 작성자가 없다
 - \`programs\`: 블록과 정보줄이 가리키는 운영 컨텐츠
-- \`live\`: 라이브 배포(⑧) 전에는 null
+- \`live\`: 지금 띄울 라이브(기기 값, 없으면 그룹 값). 라이브가 띄우는 신청은 이 기기 대상이 아니어도 실린다
 - \`playlistVersion\`은 serverTime을 뺀 v2 응답 전체의 해시다`,
   })
   @ApiParam({

@@ -26,6 +26,9 @@ export const AUDIT_ACTIONS = [
   'GROUP_DELETED',
   // 그룹 편성 저장. target은 GROUP이다
   'LINEUP_UPDATED',
+  // 라이브 설정·해제. target은 DEVICE 또는 GROUP이다
+  'LIVE_SET',
+  'LIVE_CLEARED',
   'USER_ROLE_GRANTED',
   'USER_ROLE_REVOKED',
 ] as const;

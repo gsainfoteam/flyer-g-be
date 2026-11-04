@@ -18,6 +18,8 @@ import {
   LineupsService,
 } from '../lineups/lineups.service.js';
 import { isQuietAt } from '../lineups/quiet-hours.js';
+import type { LiveDto } from '../live/dto/live.dto.js';
+import { liveDtoOf, LiveService } from '../live/live.service.js';
 import { TargetGroupsService } from '../target-groups/target-groups.service.js';
 import { generateDeviceToken, hashDeviceToken } from './auth/device-token.js';
 import type {
@@ -42,6 +44,7 @@ export class DevicesService {
     @Inject(DB_CONNECTION) private readonly db: Database,
     private readonly targetGroupsService: TargetGroupsService,
     private readonly lineupsService: LineupsService,
+    private readonly liveService: LiveService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -50,31 +53,36 @@ export class DevicesService {
       .select()
       .from(devices)
       .orderBy(asc(devices.name), asc(devices.id));
-    const [groups, settings] = await Promise.all([
-      this.groupIdsOf(rows.map((row) => row.id)),
-      this.lineupsService.settingsOf(rows.map((row) => row.programGroupId)),
-    ]);
     const now = new Date();
     return {
       serverTime: now.toISOString(),
-      items: rows.map((row) =>
-        toDto(
-          row,
-          groups.get(row.id) ?? [],
-          effectiveSettings(row, settings),
-          now,
-        ),
-      ),
+      items: await this.dtosOf(rows, now),
     };
   }
 
   async findOne(id: string): Promise<DeviceDto> {
-    const row = await this.findRow(id);
-    const [groups, settings] = await Promise.all([
-      this.groupIdsOf([id]),
-      this.lineupsService.effectiveSettingsOf(row),
+    const [dto] = await this.dtosOf([await this.findRow(id)], new Date());
+    return dto;
+  }
+
+  /** 기기 그룹, 실제 편성 설정, 실제 라이브를 한 번씩 읽어 응답을 만든다 */
+  private async dtosOf(rows: Device[], now: Date): Promise<DeviceDto[]> {
+    const groups = await this.groupIdsOf(rows.map((row) => row.id));
+    const groupIdsByDevice = new Map(
+      rows.map((row) => [row.id, groups.get(row.id) ?? []]),
+    );
+    const [settings, live] = await Promise.all([
+      this.lineupsService.settingsOf(rows.map((row) => row.programGroupId)),
+      this.liveService.effectiveFor(groupIdsByDevice, now),
     ]);
-    return toDto(row, groups.get(id) ?? [], settings, new Date());
+    return rows.map((row) =>
+      toDto(row, {
+        groupIds: groupIdsByDevice.get(row.id) ?? [],
+        settings: effectiveSettings(row, settings),
+        live: liveDtoOf(live.get(row.id) ?? null),
+        now,
+      }),
+    );
   }
 
   async create(
@@ -313,9 +321,17 @@ function assertProgramGroupIn(
 
 function toDto(
   device: Device,
-  groupIds: string[],
-  settings: LineupSettings,
-  now: Date,
+  {
+    groupIds,
+    settings,
+    live,
+    now,
+  }: {
+    groupIds: string[];
+    settings: LineupSettings;
+    live: LiveDto | null;
+    now: Date;
+  },
 ): DeviceDto {
   return {
     id: device.id,
@@ -334,6 +350,7 @@ function toDto(
     lastPlaylistVersion: device.lastPlaylistVersion,
     lastRenderOkAt: device.lastRenderOkAt?.toISOString() ?? null,
     now: device.nowPlaying,
+    live,
     status: statusOf(device, settings, now),
     layout: {
       type: settings.posterLayout,

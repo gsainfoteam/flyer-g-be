@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module.js';
 import { LineupsModule } from '../lineups/lineups.module.js';
+import { LiveModule } from '../live/live.module.js';
 import { TargetGroupsModule } from '../target-groups/target-groups.module.js';
 import { DeviceAuthGuard } from './auth/device-auth.js';
 import {
@@ -10,7 +11,7 @@ import {
 import { DevicesService } from './devices.service.js';
 
 @Module({
-  imports: [AuditModule, LineupsModule, TargetGroupsModule],
+  imports: [AuditModule, LineupsModule, LiveModule, TargetGroupsModule],
   controllers: [DevicesController, DeviceRuntimeController],
   providers: [DevicesService, DeviceAuthGuard],
   exports: [DevicesService, DeviceAuthGuard],
