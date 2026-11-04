@@ -330,6 +330,7 @@ export const eventBannerModeEnum = pgEnum('event_banner_mode', [
 export const eventBannerOccasionEnum = pgEnum('event_banner_occasion', [
   'BIRTHDAY',
   'ADMISSION',
+  'GRADUATION',
   'AWARD',
   'WELCOME',
   'OTHER',
@@ -352,6 +353,8 @@ export const submissionEventBanners = pgTable(
     mode: eventBannerModeEnum('mode').notNull(),
     occasion: eventBannerOccasionEnum('occasion'),
     recipient: varchar('recipient', { length: 20 }).notNull(),
+    // TV에 크게 나오는 문구. 이 칸이 생기기 전 배너는 null이고 TV가 받는 사람을 대신 띄운다
+    headline: varchar('headline', { length: 30 }),
     message: varchar('message', { length: 60 }),
     sender: varchar('sender', { length: 20 }),
     // 사진 속 인물의 동의를 받았다고 신청자가 확인했다. 사진이 있는 TEMPLATE에서만 true다

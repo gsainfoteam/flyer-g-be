@@ -255,6 +255,7 @@ describe('소식 제보 (e2e)', () => {
           mode: 'TEMPLATE',
           occasion: 'BIRTHDAY',
           recipient: '지민',
+          headline: '지민아, 생일 축하해',
           message: '축하해!',
         },
       }).expect(201);

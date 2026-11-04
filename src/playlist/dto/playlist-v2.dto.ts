@@ -55,6 +55,15 @@ export class EventBannerPlaylistItemDto extends PlaylistEntryDto {
   recipient: string;
 
   @ApiProperty({
+    description:
+      'TV에 크게 나오는 문구. null이면(이 칸이 생기기 전 배너) recipient를 띄운다',
+    type: String,
+    nullable: true,
+    example: '지민아, 생일 축하해',
+  })
+  headline: string | null;
+
+  @ApiProperty({
     type: String,
     nullable: true,
     example: '스물한 살 생일 축하해! 오늘 하루는 네가 주인공',

@@ -18,6 +18,7 @@ import {
 
 export const EVENT_BANNER_TEXT_LIMITS = {
   recipient: 20,
+  headline: 30,
   message: 60,
   sender: 20,
 } as const;
@@ -67,6 +68,20 @@ export class EventBannerInputDto {
     message: `받는 사람은 ${EVENT_BANNER_TEXT_LIMITS.recipient}자 이하여야 합니다.`,
   })
   recipient: string;
+
+  @ApiPropertyOptional({
+    description: `TV에 크게 나오는 문구. 앞뒤 공백을 지운 뒤 1~${EVENT_BANNER_TEXT_LIMITS.headline}자. TEMPLATE은 필수, IMAGE는 선택`,
+    type: String,
+    nullable: true,
+    example: '지민아, 생일 축하해',
+  })
+  @Transform(trimToNull)
+  @IsOptional()
+  @IsString({ message: '큰 문구가 올바르지 않습니다.' })
+  @MaxLength(EVENT_BANNER_TEXT_LIMITS.headline, {
+    message: `큰 문구는 ${EVENT_BANNER_TEXT_LIMITS.headline}자 이하여야 합니다.`,
+  })
+  headline?: string | null;
 
   @ApiPropertyOptional({
     description: `전할 말. 앞뒤 공백을 지운 뒤 1~${EVENT_BANNER_TEXT_LIMITS.message}자. TEMPLATE은 필수, IMAGE는 선택`,
@@ -143,6 +158,14 @@ export class EventBannerDto {
 
   @ApiProperty({ example: '지민' })
   recipient: string;
+
+  @ApiProperty({
+    description: 'TV에 크게 나오는 문구. 이 칸이 생기기 전 배너는 null이다',
+    type: String,
+    nullable: true,
+    example: '지민아, 생일 축하해',
+  })
+  headline: string | null;
 
   @ApiProperty({
     type: String,

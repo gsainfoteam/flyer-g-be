@@ -48,6 +48,7 @@ const template = (
   mode: 'TEMPLATE',
   occasion: 'BIRTHDAY',
   recipient: '지민',
+  headline: '지민아, 생일 축하해',
   message: '생일 축하해!',
   sender: '3층 친구들',
   ...overrides,
@@ -103,18 +104,31 @@ describe('EVENT_BANNER_KIND.resolve', () => {
       mode: 'TEMPLATE',
       occasion: 'BIRTHDAY',
       recipient: '지민',
+      headline: '지민아, 생일 축하해',
       message: '생일 축하해!',
       sender: '3층 친구들',
       photoConsent: false,
     });
   });
 
-  it('TEMPLATE: occasion·message가 없으면 오류, assetId는 쓸 수 없다', async () => {
+  it('졸업도 고를 수 있고 목록 제목에 나온다', async () => {
+    const result = await resolve(template({ occasion: 'GRADUATION' }));
+    expect(result.errors).toEqual({});
+    expect(result.columns.title).toBe('졸업 · 지민에게');
+  });
+
+  it('TEMPLATE: occasion·headline·message가 없으면 오류, assetId는 쓸 수 없다', async () => {
     const result = await resolve(
-      template({ occasion: null, message: null, assetId: IMAGE_ID }),
+      template({
+        occasion: null,
+        headline: null,
+        message: null,
+        assetId: IMAGE_ID,
+      }),
     );
     expect(result.errors).toEqual({
       'eventBanner.occasion': '어떤 소식인지 고르세요.',
+      'eventBanner.headline': '큰 문구를 입력하세요.',
       'eventBanner.message': '전할 말을 입력하세요.',
       'eventBanner.assetId':
         '템플릿 배너에는 이미지를 쓸 수 없습니다. 사진은 photoAssetId로 넣으세요.',
