@@ -152,20 +152,26 @@ export class ReviewsController {
 
   @Post('submissions/:id/suspend')
   @HttpCode(200)
-  @Roles('REVIEWER')
   @Idempotent()
   @ApiOperation({
     summary: '게시 중단',
     description: `승인된 게시(APPROVED·SCHEDULED·PUBLISHED, 기간이 끝나지 않은 것)를 내린다.
 
+- REVIEWER·SUPER_ADMIN은 모든 종류를 중단할 수 있다. 일반 사용자는 본인이 작성한 STORY·EVENT_BANNER만 중단할 수 있다
 - 사유는 신청자에게 보이고, 검토 이력에 \`decision: SUSPENDED\`로 남는다
 - 급하게 내리는 경우라 revision을 받지 않는다
 - 기기에는 다음 편성 동기화 때 반영된다`,
   })
   @ApiParam(ID_PARAM)
   @ApiOkResponse({ type: SubmissionDetailDto })
-  @ApiForbiddenResponse(REVIEWER_ONLY)
-  @ApiNotFoundResponse(NOT_FOUND_DOC)
+  @ApiForbiddenResponse({
+    description: '일반 사용자는 본인 포스터를 게시 중단할 수 없음',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: '없는 신청이거나 일반 사용자가 타인의 신청에 접근함',
+    type: ErrorResponseDto,
+  })
   @ApiConflictResponse({
     description: '중단할 수 없는 상태이거나 이미 끝난 게시',
     type: ErrorResponseDto,

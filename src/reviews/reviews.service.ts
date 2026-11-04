@@ -23,7 +23,7 @@ import {
 } from '../submissions/submissions.service.js';
 import type { ReviewDto } from './dto/review.dto.js';
 
-/** 운영자가 게시를 중단할 수 있는 상태 (FR-REV-05) */
+/** 게시를 중단할 수 있는 상태 (FR-REV-05) */
 const SUSPENDABLE_STATUSES: readonly SubmissionStatus[] = [
   'APPROVED',
   'SCHEDULED',
@@ -151,12 +151,24 @@ export class ReviewsService {
    * 연결된 기기에는 곧바로 program-changed를 보낸다.
    */
   async suspend(
-    reviewer: AuthUser,
+    user: AuthUser,
     id: string,
     reason: string,
   ): Promise<SubmissionDetailDto> {
     const now = new Date();
     const current = await this.findExisting(id);
+    if (!isReviewer(user.roles)) {
+      if (current.requesterId !== user.id) {
+        throw notFound();
+      }
+      if (current.type !== 'STORY' && current.type !== 'EVENT_BANNER') {
+        throw new AppException(
+          HttpStatus.FORBIDDEN,
+          ErrorCode.FORBIDDEN,
+          'Only reviewers can suspend this submission type',
+        );
+      }
+    }
     if (
       !SUSPENDABLE_STATUSES.includes(current.status) ||
       // 승인된 신청은 기간이 있다 (submissions_period_after_approval)
@@ -177,11 +189,11 @@ export class ReviewsService {
         revision: current.version,
         decision: 'SUSPENDED',
         comment: reason,
-        reviewerId: reviewer.id,
+        reviewerId: user.id,
         reviewedAt: now,
       });
       await this.auditService.record(tx, {
-        actor: { type: 'USER', id: reviewer.id },
+        actor: { type: 'USER', id: user.id },
         action: 'SUBMISSION_SUSPENDED',
         target: { type: 'SUBMISSION', id },
         reason,
@@ -190,7 +202,7 @@ export class ReviewsService {
       });
     });
     this.signageChanges.emit({ scope: 'ALL' });
-    return this.submissionsService.detail(id, now, reviewer);
+    return this.submissionsService.detail(id, now, user);
   }
 
   /** 검토 이력. 신청자 본인과 검토자만 본다. 오래된 것부터 (상세 화면 타임라인 순서). */
@@ -219,6 +231,13 @@ export class ReviewsService {
 
     return rows.map((review) => ({
       ...review,
+      // 제보 작성자가 직접 중단한 기록에서도 작성자를 가린다.
+      ...(kindOf(row.type).anonymous &&
+        user.id !== row.requesterId &&
+        review.reviewerId === row.requesterId && {
+          reviewerId: null,
+          reviewerName: null,
+        }),
       reviewedAt: review.reviewedAt.toISOString(),
     }));
   }

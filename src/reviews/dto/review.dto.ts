@@ -109,11 +109,22 @@ export class ReviewDto {
   })
   comment: string | null;
 
-  @ApiProperty({ example: '6f1c2c1e-0000-4000-8000-000000000002' })
-  reviewerId: string;
+  @ApiProperty({
+    description:
+      '처리한 사용자 ID. 작성자가 직접 중단할 수도 있다. STORY 작성자의 기록은 본인이 아니면 null',
+    type: String,
+    nullable: true,
+    example: '6f1c2c1e-0000-4000-8000-000000000002',
+  })
+  reviewerId: string | null;
 
-  @ApiProperty({ example: '김관리' })
-  reviewerName: string;
+  @ApiProperty({
+    description: '처리한 사용자 이름. reviewerId와 같은 규칙으로 가린다',
+    type: String,
+    nullable: true,
+    example: '김관리',
+  })
+  reviewerName: string | null;
 
   @ApiProperty({ example: '2026-07-28T01:20:00.000Z' })
   reviewedAt: string;
