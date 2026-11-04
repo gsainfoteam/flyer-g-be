@@ -10,8 +10,10 @@ import { SIGNAGE_POLICY } from '../../policy/signage-policy.js';
 import { validatePeriod } from '../submission-rules.js';
 import { checkMediaAsset, type MediaProblem } from './media-asset.js';
 import {
+  contentChecksum,
   EMPTY_KIND_COLUMNS,
   EMPTY_KIND_RESPONSE,
+  playlistEntry,
   type SubmissionKind,
 } from './submission-kind.js';
 
@@ -205,6 +207,32 @@ export const EVENT_BANNER_KIND: SubmissionKind<EventBannerDetail> = {
         assetId: isImage ? row.assetId : null,
         assetUrl: isImage ? url : null,
       },
+    };
+  },
+
+  toPlaylistItem(row, detail, media) {
+    const isImage = detail.mode === 'IMAGE';
+    const { asset } = row;
+    const url = asset ? media.variantUrls(asset.id).tv : null;
+    const text = {
+      mode: detail.mode,
+      occasion: detail.occasion,
+      recipient: detail.recipient,
+      message: detail.message,
+      sender: detail.sender,
+    };
+    // URL은 저장 위치가 바뀌어도 같은 내용이므로 checksum에는 미디어 checksum을 넣는다
+    const checksum = contentChecksum({
+      ...text,
+      media: asset?.checksum ?? null,
+    });
+    return {
+      ...playlistEntry(row, checksum),
+      ...text,
+      photoUrl: isImage ? null : url,
+      assetUrl: isImage ? url : null,
+      width: asset?.width ?? null,
+      height: asset?.height ?? null,
     };
   },
 };
