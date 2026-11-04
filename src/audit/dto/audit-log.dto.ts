@@ -101,7 +101,7 @@ export class AuditLogDto {
   @ApiProperty({
     description: `행위. 신청: SUBMISSION_CREATED, _UPDATED, _RESUBMITTED, _CANCELED, _APPROVED, _REJECTED, _SUSPENDED, _SCHEDULED, _PUBLISHED, _ENDED, STORY_AUTHOR_REVEALED
 기기: DEVICE_REGISTERED, DEVICE_UPDATED, DEVICE_TOKEN_ROTATED
-위치 그룹: GROUP_CREATED, GROUP_UPDATED, GROUP_DELETED
+위치 그룹: GROUP_CREATED, GROUP_UPDATED, GROUP_DELETED, LINEUP_UPDATED(그룹 편성 저장)
 사용자 역할: USER_ROLE_GRANTED, USER_ROLE_REVOKED (SUPER_ADMIN만 볼 수 있다)
 
 - _SCHEDULED·_PUBLISHED·_ENDED는 1분마다 도는 주기 작업이 기간에 맞춰 상태를 바꿀 때 actorType SYSTEM으로 남는다. 실제 시작·종료 시각보다 최대 1분 늦게 찍힐 수 있다
@@ -109,6 +109,7 @@ export class AuditLogDto {
 - 중단(_SUSPENDED)된 게시에는 _ENDED가 남지 않는다
 - STORY_AUTHOR_REVEALED: 운영자가 제보 작성자를 열람했다. actor가 열람한 운영자이고, 작성자는 metadata에도 없다
 - GROUP_* metadata: _CREATED·_DELETED는 { name }, _UPDATED는 { changes: { name?: { from, to }, isHidden?: { from, to } } }
+- LINEUP_UPDATED metadata: { version, blockCount } (저장 뒤 version)
 - USER_ROLE_* metadata: { role } (REVIEWER 또는 SUPER_ADMIN). targetId는 역할이 바뀐 사용자`,
     example: 'SUBMISSION_APPROVED',
   })

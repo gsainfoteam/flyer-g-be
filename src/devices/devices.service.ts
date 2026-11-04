@@ -6,8 +6,17 @@ import type { AuthUser } from '../auth/types/auth-user.js';
 import { AppException } from '../common/errors/app.exception.js';
 import { ErrorCode } from '../common/errors/error-code.js';
 import { validationFailed } from '../common/errors/validation.js';
+import { parseOrFail } from '../common/validation/zod.js';
 import { DB_CONNECTION, type Database, type Transaction } from '../db/index.js';
 import { deviceTargetGroups, devices, type Device } from '../db/schema.js';
+import {
+  deviceOverridesSchema,
+  type LineupSettings,
+} from '../lineups/lineup-schema.js';
+import {
+  effectiveSettings,
+  LineupsService,
+} from '../lineups/lineups.service.js';
 import { TargetGroupsService } from '../target-groups/target-groups.service.js';
 import { generateDeviceToken, hashDeviceToken } from './auth/device-token.js';
 import type {
@@ -31,6 +40,7 @@ export class DevicesService {
   constructor(
     @Inject(DB_CONNECTION) private readonly db: Database,
     private readonly targetGroupsService: TargetGroupsService,
+    private readonly lineupsService: LineupsService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -39,18 +49,31 @@ export class DevicesService {
       .select()
       .from(devices)
       .orderBy(asc(devices.name), asc(devices.id));
-    const groups = await this.groupIdsOf(rows.map((row) => row.id));
+    const [groups, settings] = await Promise.all([
+      this.groupIdsOf(rows.map((row) => row.id)),
+      this.lineupsService.settingsOf(rows.map((row) => row.programGroupId)),
+    ]);
     const now = new Date();
     return {
       serverTime: now.toISOString(),
-      items: rows.map((row) => toDto(row, groups.get(row.id) ?? [], now)),
+      items: rows.map((row) =>
+        toDto(
+          row,
+          groups.get(row.id) ?? [],
+          effectiveSettings(row, settings),
+          now,
+        ),
+      ),
     };
   }
 
   async findOne(id: string): Promise<DeviceDto> {
     const row = await this.findRow(id);
-    const groups = await this.groupIdsOf([id]);
-    return toDto(row, groups.get(id) ?? [], new Date());
+    const [groups, settings] = await Promise.all([
+      this.groupIdsOf([id]),
+      this.lineupsService.effectiveSettingsOf(row),
+    ]);
+    return toDto(row, groups.get(id) ?? [], settings, new Date());
   }
 
   async create(
@@ -58,6 +81,14 @@ export class DevicesService {
     dto: CreateDeviceDto,
   ): Promise<DeviceWithTokenDto> {
     const groupIds = dto.groupIds ?? [];
+    const programGroupId = dto.programGroupId ?? groupIds[0];
+    if (programGroupId === undefined) {
+      throw validationFailed({
+        programGroupId:
+          '편성 그룹을 고르세요. 위치 그룹(groupIds)이 하나 이상 있어야 합니다.',
+      });
+    }
+    assertProgramGroupIn(programGroupId, groupIds);
     await this.assertGroups(groupIds);
 
     const now = new Date();
@@ -69,9 +100,7 @@ export class DevicesService {
           name: dto.name,
           location: dto.location ?? null,
           orientation: dto.orientation,
-          layout: dto.layout,
-          rotationSeconds: dto.rotationSeconds,
-          refreshAfterSeconds: dto.refreshAfterSeconds,
+          programGroupId,
           tokenHash: hashDeviceToken(token),
           tokenIssuedAt: now,
           createdAt: now,
@@ -83,7 +112,7 @@ export class DevicesService {
         actor: { type: 'USER', id: admin.id },
         action: 'DEVICE_REGISTERED',
         target: { type: 'DEVICE', id: row.id },
-        metadata: { name: dto.name, groupIds },
+        metadata: { name: dto.name, groupIds, programGroupId },
         at: now,
       });
       return row.id;
@@ -97,37 +126,48 @@ export class DevicesService {
     id: string,
     dto: UpdateDeviceDto,
   ): Promise<DeviceDto> {
-    await this.findRow(id);
+    const current = await this.findRow(id);
+    const currentGroups = (await this.groupIdsOf([id])).get(id) ?? [];
+    const programGroupId = dto.programGroupId ?? current.programGroupId;
+    assertProgramGroupIn(programGroupId, dto.groupIds ?? currentGroups);
     if (dto.groupIds !== undefined) {
       // 이미 연결된 숨긴 그룹은 그대로 둘 수 있다. 새로 추가하는 그룹만 확인한다.
-      const current = (await this.groupIdsOf([id])).get(id) ?? [];
       await this.assertGroups(
-        dto.groupIds.filter((groupId) => !current.includes(groupId)),
+        dto.groupIds.filter((groupId) => !currentGroups.includes(groupId)),
       );
     }
+    const overrides =
+      dto.overrides === undefined
+        ? current.lineupOverrides
+        : parseOrFail(deviceOverridesSchema, dto.overrides, 'overrides');
 
     const now = new Date();
     const changes = {
       name: dto.name,
       location: dto.location,
       orientation: dto.orientation,
-      layout: dto.layout,
-      rotationSeconds: dto.rotationSeconds,
-      refreshAfterSeconds: dto.refreshAfterSeconds,
       isActive: dto.isActive,
+      programGroupId: dto.programGroupId,
     };
     const changedFields = [
       ...Object.entries(changes)
         .filter(([, value]) => value !== undefined)
         .map(([key]) => key),
       ...(dto.groupIds !== undefined ? ['groupIds'] : []),
+      ...(dto.overrides !== undefined ? ['overrides'] : []),
     ];
 
     await this.db.transaction(async (tx) => {
+      // 편성 그룹에 없는 블록 예외는 저장할 때마다 지운다.
+      const lineupOverrides = await this.lineupsService.prepareOverrides(
+        tx,
+        programGroupId,
+        overrides,
+      );
       // undefined 필드는 drizzle이 SET에서 뺀다.
       await tx
         .update(devices)
-        .set({ ...changes, updatedAt: now })
+        .set({ ...changes, lineupOverrides, updatedAt: now })
         .where(eq(devices.id, id));
       if (dto.groupIds !== undefined) {
         await this.replaceGroups(tx, id, dto.groupIds);
@@ -250,12 +290,31 @@ function statusOf(device: Device, now: Date): DeviceStatus {
     : 'OFFLINE';
 }
 
-function toDto(device: Device, groupIds: string[], now: Date): DeviceDto {
+/** 편성 그룹은 기기 그룹 중 하나여야 한다(FE 요청 2-1). */
+function assertProgramGroupIn(
+  programGroupId: string,
+  groupIds: string[],
+): void {
+  if (!groupIds.includes(programGroupId)) {
+    throw validationFailed({
+      programGroupId: '편성 그룹은 위치 그룹(groupIds) 중 하나여야 합니다.',
+    });
+  }
+}
+
+function toDto(
+  device: Device,
+  groupIds: string[],
+  settings: LineupSettings,
+  now: Date,
+): DeviceDto {
   return {
     id: device.id,
     name: device.name,
     location: device.location,
     groupIds,
+    programGroupId: device.programGroupId,
+    overrides: device.lineupOverrides,
     orientation: device.orientation,
     resolution:
       device.resolutionWidth && device.resolutionHeight
@@ -266,8 +325,11 @@ function toDto(device: Device, groupIds: string[], now: Date): DeviceDto {
     lastPlaylistVersion: device.lastPlaylistVersion,
     lastRenderOkAt: device.lastRenderOkAt?.toISOString() ?? null,
     status: statusOf(device, now),
-    layout: { type: device.layout, rotationSeconds: device.rotationSeconds },
-    refreshAfterSeconds: device.refreshAfterSeconds,
+    layout: {
+      type: settings.posterLayout,
+      rotationSeconds: settings.rotationSeconds,
+    },
+    refreshAfterSeconds: settings.refreshAfterSeconds,
     tokenIssuedAt: device.tokenIssuedAt.toISOString(),
     createdAt: device.createdAt.toISOString(),
     updatedAt: device.updatedAt.toISOString(),

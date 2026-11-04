@@ -13,6 +13,7 @@ import {
   targetGroups,
   type SubmissionStatus,
 } from '../src/db/schema.js';
+import { createDefaultLineup } from '../src/lineups/lineups.service.js';
 import { StorageService } from '../src/storage/storage.service.js';
 import { MemoryStorage } from './helpers/memory-storage.js';
 import {
@@ -35,10 +36,12 @@ describe('편성 (e2e)', () => {
   let assetId: string;
   const group1 = uniqueSlug('grp');
   const group2 = uniqueSlug('grp');
+  // 어떤 게시물도 대상으로 고르지 않는 그룹. 이 그룹 기기에는 대상 그룹이 없는 게시물만 나온다
+  const group3 = uniqueSlug('grp');
   const deviceIds: string[] = [];
   let inGroup1: RegisteredDevice;
   let inGroup2: RegisteredDevice;
-  let noGroup: RegisteredDevice;
+  let untargeted: RegisteredDevice;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
@@ -54,17 +57,39 @@ describe('편성 (e2e)', () => {
     await db.insert(targetGroups).values([
       { id: group1, name: `E2E 편성 그룹 ${group1}` },
       { id: group2, name: `E2E 편성 그룹 ${group2}` },
+      { id: group3, name: `E2E 편성 그룹 ${group3}` },
     ]);
+    // API로 만든 그룹처럼 기본 편성을 둔다
+    await db.transaction(async (tx) => {
+      for (const id of [group1, group2, group3]) {
+        await createDefaultLineup(tx, id, new Date());
+      }
+    });
     admin = await createTestUser(app, { roles: ['SUPER_ADMIN'] });
     requester = await createTestUser(app);
     assetId = await createReadyAsset(app, requester.user.id);
 
-    inGroup1 = await register([group1], {
-      layout: 'STRIP',
-      rotationSeconds: 15,
-    });
+    // 화면 설정은 편성 그룹의 설정을 따른다
+    const lineup = await request(app.getHttpServer())
+      .get(`/signage/target-groups/${group1}/lineup`)
+      .set('Authorization', admin.authHeader)
+      .expect(200);
+    await request(app.getHttpServer())
+      .put(`/signage/target-groups/${group1}/lineup`)
+      .set('Authorization', admin.authHeader)
+      .send({
+        version: lineup.body.version,
+        settings: {
+          ...lineup.body.settings,
+          posterLayout: 'STRIP',
+          rotationSeconds: 15,
+        },
+        blocks: lineup.body.blocks,
+      })
+      .expect(200);
+    inGroup1 = await register([group1]);
     inGroup2 = await register([group2]);
-    noGroup = await register([]);
+    untargeted = await register([group3]);
   });
 
   afterAll(async () => {
@@ -73,19 +98,16 @@ describe('편성 (e2e)', () => {
     await db.delete(devices).where(inArray(devices.id, deviceIds));
     await db
       .delete(targetGroups)
-      .where(inArray(targetGroups.id, [group1, group2]));
+      .where(inArray(targetGroups.id, [group1, group2, group3]));
     await admin.remove();
     await app.close();
   });
 
-  async function register(
-    groupIds: string[],
-    settings: object = {},
-  ): Promise<RegisteredDevice> {
+  async function register(groupIds: string[]): Promise<RegisteredDevice> {
     const res = await request(app.getHttpServer())
       .post('/signage/devices')
       .set('Authorization', admin.authHeader)
-      .send({ name: 'E2E 편성 TV', groupIds, ...settings })
+      .send({ name: 'E2E 편성 TV', groupIds })
       .expect(201);
     deviceIds.push(res.body.id);
     return { id: res.body.id, token: res.body.token };
@@ -174,7 +196,7 @@ describe('편성 (e2e)', () => {
       ).map((status) => insertSubmission({ status })),
     );
 
-    const ids = await ourItemIds(noGroup, [
+    const ids = await ourItemIds(untargeted, [
       published,
       lagging,
       approved,
@@ -203,7 +225,7 @@ describe('편성 (e2e)', () => {
     expect((await ourItemIds(inGroup2, ids)).sort()).toEqual(
       [everyone, both].sort(),
     );
-    expect(await ourItemIds(noGroup, ids)).toEqual([everyone]);
+    expect(await ourItemIds(untargeted, ids)).toEqual([everyone]);
   });
 
   it('검증이 끝나지 않은 포스터는 뺀다', async () => {
@@ -223,7 +245,7 @@ describe('편성 (e2e)', () => {
       .set({ assetId: pending.id })
       .where(eq(submissions.id, id));
 
-    expect(await ourItemIds(noGroup, [id])).toEqual([]);
+    expect(await ourItemIds(untargeted, [id])).toEqual([]);
   });
 
   it('우선순위 높은 순, 같으면 시작이 이른 순이고 항목 형태가 맞다', async () => {
@@ -375,16 +397,40 @@ describe('편성 (e2e)', () => {
       expect(next.body.playlistVersion).not.toBe(first.body.playlistVersion);
     });
 
-    it('기기 화면 설정이 바뀌어도 버전이 바뀐다', async () => {
-      const first = await fetchPlaylist(noGroup).expect(200);
+    it('기기 예외로 화면 설정이 바뀌어도 버전이 바뀐다', async () => {
+      const first = await fetchPlaylist(untargeted).expect(200);
       await request(app.getHttpServer())
-        .patch(`/signage/devices/${noGroup.id}`)
+        .patch(`/signage/devices/${untargeted.id}`)
         .set('Authorization', admin.authHeader)
-        .send({ refreshAfterSeconds: 30 })
+        .send({ overrides: { settings: { refreshAfterSeconds: 30 } } })
         .expect(200);
 
-      const next = await fetchPlaylist(noGroup, first.headers.etag).expect(200);
+      const next = await fetchPlaylist(untargeted, first.headers.etag).expect(
+        200,
+      );
       expect(next.body.refreshAfterSeconds).toBe(30);
+    });
+
+    it('그룹 편성 설정이 바뀌어도 버전이 바뀐다', async () => {
+      const first = await fetchPlaylist(inGroup2).expect(200);
+      const lineup = await request(app.getHttpServer())
+        .get(`/signage/target-groups/${group2}/lineup`)
+        .set('Authorization', admin.authHeader)
+        .expect(200);
+      await request(app.getHttpServer())
+        .put(`/signage/target-groups/${group2}/lineup`)
+        .set('Authorization', admin.authHeader)
+        .send({
+          version: lineup.body.version,
+          settings: { ...lineup.body.settings, rotationSeconds: 25 },
+          blocks: lineup.body.blocks,
+        })
+        .expect(200);
+
+      const next = await fetchPlaylist(inGroup2, first.headers.etag).expect(
+        200,
+      );
+      expect(next.body.layout).toEqual({ type: 'WALL', rotationSeconds: 25 });
     });
   });
 

@@ -16,11 +16,13 @@ import {
   reviews,
   submissionEventBanners,
   submissions,
+  targetGroups,
 } from '../src/db/schema.js';
 import { StorageService } from '../src/storage/storage.service.js';
 import { MemoryStorage } from './helpers/memory-storage.js';
 import {
   createReadyAsset,
+  createTestGroup,
   createTestUser,
   type TestUser,
 } from './helpers/test-user.js';
@@ -39,6 +41,7 @@ describe('이벤트 배너 (e2e)', () => {
   let photoId: string;
   let videoId: string;
   const deviceIds: string[] = [];
+  let groupId: string | undefined;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
@@ -70,6 +73,9 @@ describe('이벤트 배너 (e2e)', () => {
     await db.delete(auditLogs).where(inArray(auditLogs.targetId, deviceIds));
     if (deviceIds.length > 0) {
       await db.delete(devices).where(inArray(devices.id, deviceIds));
+    }
+    if (groupId) {
+      await db.delete(targetGroups).where(eq(targetGroups.id, groupId));
     }
     await admin.remove();
     await app.close();
@@ -437,10 +443,11 @@ describe('이벤트 배너 (e2e)', () => {
     });
 
     it('편성 v1에는 나오지 않는다', async () => {
+      groupId = await createTestGroup(app);
       const device = await request(server())
         .post('/signage/devices')
         .set('Authorization', admin.authHeader)
-        .send({ name: 'E2E 배너 TV', groupIds: [] })
+        .send({ name: 'E2E 배너 TV', groupIds: [groupId] })
         .expect(201);
       deviceIds.push(device.body.id);
 

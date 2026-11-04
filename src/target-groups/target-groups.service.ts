@@ -1,15 +1,21 @@
 import { Trace } from '@gsainfoteam/nest-observability';
 import { randomBytes } from 'node:crypto';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
 import type { AuthUser } from '../auth/types/auth-user.js';
 import { AppException } from '../common/errors/app.exception.js';
 import { ErrorCode } from '../common/errors/error-code.js';
 import { validationFailed } from '../common/errors/validation.js';
 import { violatesForeignKey, violatesUnique } from '../db/errors.js';
-import { DB_CONNECTION, type Database } from '../db/index.js';
-import { deviceTargetGroups, devices, targetGroups } from '../db/schema.js';
+import { DB_CONNECTION, type Database, type Transaction } from '../db/index.js';
+import {
+  deviceTargetGroups,
+  devices,
+  submissionTargetGroups,
+  targetGroups,
+} from '../db/schema.js';
+import { createDefaultLineup } from '../lineups/lineups.service.js';
 import type {
   CreateTargetGroupDto,
   UpdateTargetGroupDto,
@@ -17,10 +23,12 @@ import type {
 import type { TargetGroupDto } from './dto/target-group.dto.js';
 
 const NAME_UNIQUE_INDEX = 'target_groups_name_lower_uq';
-// 그룹을 가리키는 FK. 둘 다 ON DELETE no action이라 쓰는 곳이 있으면 삭제가 실패한다.
+// 그룹을 가리키는 FK. 모두 ON DELETE no action이라 쓰는 곳이 있으면 삭제가 실패한다.
+// 그룹 편성(group_lineups)은 그룹과 같이 지워진다.
 const GROUP_REFERENCES = [
   'device_target_groups_target_group_id_target_groups_id_fk',
   'submission_target_groups_target_group_id_target_groups_id_fk',
+  'devices_program_group_id_target_groups_id_fk',
 ];
 
 @Trace()
@@ -62,6 +70,7 @@ export class TargetGroupsService {
           createdAt: now,
           updatedAt: now,
         });
+        await createDefaultLineup(tx, id, now);
         await this.auditService.record(tx, {
           actor: { type: 'USER', id: admin.id },
           action: 'GROUP_CREATED',
@@ -128,36 +137,40 @@ export class TargetGroupsService {
   }
 
   /**
-   * 어떤 기기·신청도 쓰지 않는 그룹만 지운다(오타로 만든 그룹 정리용).
-   * 쓰는 곳은 FK가 확인하므로 동시에 기기에 연결되는 경우에도 지워지지 않는다.
+   * 어떤 기기·신청도 쓰지 않는 그룹만 지운다(오타로 만든 그룹 정리용). 쓰는 곳이 있으면 409 IN_USE다.
+   * 그룹 행을 FOR UPDATE로 잡은 뒤 센다. 기기·신청에 그룹을 연결하는 쪽은 FK 검사로
+   * 이 행에 KEY SHARE 잠금을 걸므로, 세는 동안 새로 연결되지 않는다.
    */
   async remove(admin: AuthUser, id: string): Promise<void> {
     const now = new Date();
     try {
       await this.db.transaction(async (tx) => {
-        const [deleted] = await tx
-          .delete(targetGroups)
+        const [group] = await tx
+          .select({ name: targetGroups.name })
+          .from(targetGroups)
           .where(eq(targetGroups.id, id))
-          .returning({ name: targetGroups.name });
-        if (!deleted) {
+          .for('update');
+        if (!group) {
           throw notFound();
         }
+        const usage = await usageOf(tx, id);
+        if (usage.deviceIds.length > 0 || usage.submissionCount > 0) {
+          throw inUse(usage);
+        }
+        await tx.delete(targetGroups).where(eq(targetGroups.id, id));
         await this.auditService.record(tx, {
           actor: { type: 'USER', id: admin.id },
           action: 'GROUP_DELETED',
           target: { type: 'GROUP', id },
           // 지운 뒤에는 targetTitle로 이름을 찾을 수 없어 남겨 둔다.
-          metadata: { name: deleted.name },
+          metadata: { name: group.name },
           at: now,
         });
       });
     } catch (error) {
+      // 잠금으로 막히지 않는 경로가 생겨도 FK가 지킨다
       if (GROUP_REFERENCES.some((fk) => violatesForeignKey(error, fk))) {
-        throw new AppException(
-          HttpStatus.CONFLICT,
-          ErrorCode.CONFLICT,
-          'Target group is used by devices or submissions',
-        );
+        throw inUse(await usageOf(this.db, id));
       }
       throw error;
     }
@@ -211,6 +224,44 @@ export class TargetGroupsService {
       throw error;
     }
   }
+}
+
+type GroupUsage = { deviceIds: string[]; submissionCount: number };
+
+/** 그룹에 속하거나 그룹 편성을 따르는 기기, 그룹을 대상으로 고른 신청 수(끝난 신청 포함) */
+async function usageOf(
+  db: Database | Transaction,
+  groupId: string,
+): Promise<GroupUsage> {
+  const deviceRows = await db
+    .selectDistinct({ id: devices.id })
+    .from(devices)
+    .leftJoin(deviceTargetGroups, eq(deviceTargetGroups.deviceId, devices.id))
+    .where(
+      or(
+        eq(deviceTargetGroups.targetGroupId, groupId),
+        eq(devices.programGroupId, groupId),
+      ),
+    )
+    .orderBy(devices.id);
+  const [submissionRow] = await db
+    .select({ count: sql`count(*)`.mapWith(Number) })
+    .from(submissionTargetGroups)
+    .where(eq(submissionTargetGroups.targetGroupId, groupId));
+  return {
+    deviceIds: deviceRows.map((row) => row.id),
+    submissionCount: submissionRow.count,
+  };
+}
+
+function inUse(usage: GroupUsage): AppException {
+  return new AppException(
+    HttpStatus.CONFLICT,
+    ErrorCode.IN_USE,
+    'Target group is used by devices or submissions',
+    undefined,
+    usage,
+  );
 }
 
 function notFound(): AppException {

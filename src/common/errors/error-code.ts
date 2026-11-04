@@ -20,6 +20,8 @@ export const ErrorCode = {
   DAILY_LIMIT_EXCEEDED: 'DAILY_LIMIT_EXCEEDED',
   /** 반려·중단된 뒤 고쳐서 다시 낼 수 없는 종류다(소식 제보). 새로 써야 한다 */
   NOT_RESUBMITTABLE: 'NOT_RESUBMITTABLE',
+  /** 쓰는 곳이 있어 지울 수 없다. details에 쓰는 곳이 들어 있다 */
+  IN_USE: 'IN_USE',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

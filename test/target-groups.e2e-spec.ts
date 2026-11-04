@@ -275,7 +275,7 @@ describe('대상 위치 그룹 관리 (e2e)', () => {
       ]);
     });
 
-    it('기기가 쓰는 그룹은 숨겨도 지울 수 없다 (409)', async () => {
+    it('기기가 쓰는 그룹은 숨겨도 지울 수 없다 (409 IN_USE)', async () => {
       const group = await createGroup(`E2E 기기용 ${tag}`);
       const device = await request(server())
         .post('/signage/devices')
@@ -291,14 +291,17 @@ describe('대상 위치 그룹 관리 (e2e)', () => {
       await patch(group.id, { isHidden: true }).expect(200);
 
       const res = await remove(group.id).expect(409);
-      expect(res.body.code).toBe('CONFLICT');
+      expect(res.body).toMatchObject({
+        code: 'IN_USE',
+        details: { deviceIds: [device.body.id], submissionCount: 0 },
+      });
       expect((await list()).map((g) => g.id)).toContain(group.id);
       expect((await logsOf(group.id)).map((log) => log.action)).not.toContain(
         'GROUP_DELETED',
       );
     });
 
-    it('신청이 쓰는 그룹은 지울 수 없다 (409)', async () => {
+    it('신청이 쓰는 그룹은 지울 수 없다 (409 IN_USE)', async () => {
       const group = await createGroup(`E2E 신청용 ${tag}`);
       const now = new Date();
       const [submission] = await db
@@ -321,7 +324,10 @@ describe('대상 위치 그룹 관리 (e2e)', () => {
         .values({ submissionId: submission.id, targetGroupId: group.id });
 
       const res = await remove(group.id).expect(409);
-      expect(res.body.code).toBe('CONFLICT');
+      expect(res.body).toMatchObject({
+        code: 'IN_USE',
+        details: { deviceIds: [], submissionCount: 1 },
+      });
     });
   });
 

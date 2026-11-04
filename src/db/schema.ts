@@ -7,6 +7,11 @@
  */
 
 import { sql } from 'drizzle-orm';
+import type {
+  BlockSchedule,
+  DeviceOverrides,
+  LineupSettings,
+} from '../lineups/lineup-schema.js';
 import {
   bigint,
   boolean,
@@ -470,14 +475,6 @@ export const deviceOrientationEnum = pgEnum('device_orientation', [
 ]);
 
 /**
- * TV 화면 전환 방식. 기기마다 운영자가 고른다.
- * WALL(모아 보기): 게시물을 비율 그대로 모은 벽과 한 건씩 크게 보기를 번갈아 보여 준다.
- * STRIP(흐르는 띠): 같은 높이로 이어 붙인 띠를 한 칸씩 민다.
- * DB의 값 순서는 예전 SINGLE·FOUR_GRID 이름만 바꾼 것이라 STRIP이 먼저다.
- */
-export const displayLayoutEnum = pgEnum('display_layout', ['STRIP', 'WALL']);
-
-/**
  * 게시물을 띄우는 TV. 사용자 로그인 없이 관리자가 발급한 기기 토큰으로 접근한다.
  * 토큰 원문은 발급할 때 한 번만 보여 주고 DB에는 sha256만 둔다.
  */
@@ -490,10 +487,15 @@ export const devices = pgTable(
     orientation: deviceOrientationEnum('orientation')
       .notNull()
       .default('LANDSCAPE'),
-    // 편성 응답에 그대로 싣는 화면 설정 (요구사항 8절 확인 필요 13번: 기기별로 운영자가 정한다)
-    layout: displayLayoutEnum('layout').notNull().default('WALL'),
-    rotationSeconds: integer('rotation_seconds').notNull().default(10),
-    refreshAfterSeconds: integer('refresh_after_seconds').notNull().default(60),
+    // 편성을 따르는 그룹. 기기 그룹(device_target_groups) 중 하나여야 한다(서비스가 검사한다).
+    programGroupId: varchar('program_group_id', { length: 64 })
+      .notNull()
+      .references(() => targetGroups.id),
+    // 그룹 편성 위에 덮어쓰는 기기 예외 (src/lineups/lineup-schema.ts)
+    lineupOverrides: jsonb('lineup_overrides')
+      .$type<DeviceOverrides>()
+      .notNull()
+      .default({ settings: {}, blocks: {} }),
     // 비활성 기기는 토큰이 있어도 접근할 수 없다.
     isActive: boolean('is_active').notNull().default(true),
     tokenHash: varchar('token_hash', { length: 64 }).notNull().unique(),
@@ -514,16 +516,7 @@ export const devices = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
   },
-  (table) => [
-    check(
-      'devices_rotation_seconds_range',
-      sql`${table.rotationSeconds} between 5 and 60`,
-    ),
-    check(
-      'devices_refresh_after_seconds_range',
-      sql`${table.refreshAfterSeconds} between 15 and 300`,
-    ),
-  ],
+  (table) => [index('devices_program_group_idx').on(table.programGroupId)],
 );
 
 /** 기기가 속한 위치 그룹. 신청의 대상 그룹과 겹치면 그 기기에 편성된다. */
@@ -544,6 +537,83 @@ export const deviceTargetGroups = pgTable(
 );
 
 export type Device = typeof devices.$inferSelect;
+
+/**
+ * 운영 컨텐츠(D-day·운세·학식…). 종류와 params는 ⑩에서 채운다.
+ * 편성 블록이 FK로 가리키므로 테이블을 먼저 둔다.
+ */
+export const programs = pgTable('programs', {
+  id: varchar('id', { length: 64 }).primaryKey(),
+  type: varchar('type', { length: 32 }).notNull(),
+  name: varchar('name', { length: 40 }).notNull(),
+  params: jsonb('params').$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+});
+
+export type Program = typeof programs.$inferSelect;
+
+/** 그룹 편성. 그룹을 만들 때 같이 생기고 그룹과 같이 지워진다. */
+export const groupLineups = pgTable('group_lineups', {
+  groupId: varchar('group_id', { length: 64 })
+    .primaryKey()
+    .references(() => targetGroups.id, { onDelete: 'cascade' }),
+  version: integer('version').notNull().default(1),
+  settings: jsonb('settings').$type<LineupSettings>().notNull(),
+  updatedBy: uuid('updated_by').references(() => users.id),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+});
+
+export const lineupBlockSourceEnum = pgEnum('lineup_block_source', [
+  'SUBMISSIONS',
+  'PROGRAM',
+]);
+
+/**
+ * 그룹 편성의 블록. 순서는 position이다.
+ * 운영 컨텐츠를 가리키는 블록이 있으면 그 운영 컨텐츠는 지울 수 없다(RESTRICT).
+ */
+export const lineupBlocks = pgTable(
+  'lineup_blocks',
+  {
+    groupId: varchar('group_id', { length: 64 })
+      .notNull()
+      .references(() => groupLineups.groupId, { onDelete: 'cascade' }),
+    id: varchar('id', { length: 48 }).notNull(),
+    position: integer('position').notNull(),
+    source: lineupBlockSourceEnum('source').notNull(),
+    submissionType: submissionTypeEnum('submission_type'),
+    programId: varchar('program_id', { length: 64 }).references(
+      () => programs.id,
+      { onDelete: 'restrict' },
+    ),
+    durationSeconds: integer('duration_seconds').notNull(),
+    perVisit: integer('per_visit'),
+    schedule: jsonb('schedule').$type<BlockSchedule>().notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+  },
+  (table) => [
+    primaryKey({ columns: [table.groupId, table.id] }),
+    uniqueIndex('lineup_blocks_group_position_uq').on(
+      table.groupId,
+      table.position,
+    ),
+    index('lineup_blocks_program_idx').on(table.programId),
+    check(
+      'lineup_blocks_source_fields',
+      sql`case ${table.source}
+        when 'SUBMISSIONS' then ${table.submissionType} is not null and ${table.perVisit} is not null and ${table.programId} is null
+        when 'PROGRAM' then ${table.programId} is not null and ${table.submissionType} is null and ${table.perVisit} is null
+      end`,
+    ),
+    check(
+      'lineup_blocks_duration_range',
+      sql`${table.durationSeconds} between 5 and 300`,
+    ),
+  ],
+);
+
+export type LineupBlock = typeof lineupBlocks.$inferSelect;
 
 /**
  * 노출이 보인 자리. WALL: 벽에 작게, SPOTLIGHT: 크게 보기, STRIP: 띠 가운데,

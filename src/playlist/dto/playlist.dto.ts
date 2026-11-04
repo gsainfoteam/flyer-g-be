@@ -138,7 +138,7 @@ export class PlaylistDto {
 
   @ApiProperty({
     description:
-      '편성 내용(항목, 기기 이름, 기기 화면 설정)의 해시. 같으면 내용이 같다. ETag 헤더와 같은 값이다',
+      '편성 내용(항목, 기기 이름, 화면 설정)의 해시. 같으면 내용이 같다. ETag 헤더와 같은 값이다. 화면 설정은 편성 그룹의 설정에 기기 예외를 덮은 값이다',
     example: '9f2b5c0e3a1d4f6b',
   })
   playlistVersion: string;

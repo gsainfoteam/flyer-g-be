@@ -4,6 +4,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, gt, inArray, lte, sql } from 'drizzle-orm';
 import { AssetsService } from '../assets/assets.service.js';
 import { DB_CONNECTION, type Database } from '../db/index.js';
+import { LineupsService } from '../lineups/lineups.service.js';
 import {
   assets,
   categories,
@@ -28,10 +29,13 @@ export class PlaylistService {
   constructor(
     @Inject(DB_CONNECTION) private readonly db: Database,
     private readonly assetsService: AssetsService,
+    private readonly lineupsService: LineupsService,
   ) {}
 
   async forDevice(device: Device): Promise<PlaylistDto> {
     const now = new Date();
+    // 화면 설정은 편성 그룹의 설정에 기기 예외를 덮은 값이다
+    const settings = await this.lineupsService.effectiveSettingsOf(device);
     const targetsDevice = sql`(
       not exists (
         select 1 from ${submissionTargetGroups}
@@ -121,8 +125,8 @@ export class PlaylistService {
       organizerName: row.organizerName,
     }));
     const layout = {
-      type: device.layout,
-      rotationSeconds: device.rotationSeconds,
+      type: settings.posterLayout,
+      rotationSeconds: settings.rotationSeconds,
     };
 
     return {
@@ -131,10 +135,10 @@ export class PlaylistService {
         items,
         deviceName: device.name,
         layout,
-        refreshAfterSeconds: device.refreshAfterSeconds,
+        refreshAfterSeconds: settings.refreshAfterSeconds,
       }),
       deviceName: device.name,
-      refreshAfterSeconds: device.refreshAfterSeconds,
+      refreshAfterSeconds: settings.refreshAfterSeconds,
       layout,
       items,
     };

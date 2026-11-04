@@ -46,8 +46,11 @@ const deviceIdPipe = new ParseUUIDPipe({
 const ID_PARAM = { name: 'id', description: '기기 ID' };
 const NOT_FOUND_DOC = { description: '없는 기기', type: ErrorResponseDto };
 const VALIDATION_DOC = {
-  description:
-    '입력 검증 실패. 새로 추가한 그룹 중 없거나 숨긴 그룹이 있으면 fields.groupIds (이미 연결된 숨긴 그룹은 그대로 둘 수 있다)',
+  description: `입력 검증 실패
+- 새로 추가한 그룹 중 없거나 숨긴 그룹이 있으면 fields.groupIds (이미 연결된 숨긴 그룹은 그대로 둘 수 있다)
+- 편성 그룹이 없거나 groupIds 밖이면 fields.programGroupId
+- 옛 화면 설정 필드(layout·rotationSeconds·refreshAfterSeconds)를 보내면 그 필드에 오류 (그룹 편성·기기 예외로 옮겼다)
+- 기기 예외가 틀리면 fields의 키가 overrides.settings.rotationSeconds 같은 점 경로다`,
   type: ErrorResponseDto,
 };
 const SUPER_ADMIN_ONLY = {
@@ -116,8 +119,11 @@ TV 설정: 프론트가 \`https://<프론트>/display/{id}#token={token}\` 같�
   @Roles('SUPER_ADMIN')
   @ApiOperation({
     summary: '기기 수정',
-    description:
-      '보낸 필드만 바꾼다. `isActive: false`면 비활성(DISABLED)이 되어 토큰으로 접근할 수 없다. `groupIds`는 통째로 바꾼다.',
+    description: `보낸 필드만 바꾼다. 감사 로그 DEVICE_UPDATED (metadata.changedFields)
+- \`isActive: false\`면 비활성(DISABLED)이 되어 토큰으로 접근할 수 없다
+- \`groupIds\`는 통째로 바꾼다. 편성 그룹(\`programGroupId\`)은 groupIds 중 하나여야 한다
+- \`overrides\`(기기 예외)는 통째로 바꾼다. 편성 그룹에 없는 블록 예외는 저장할 때 지운다
+- 화면 설정은 그룹 편성(PUT /signage/target-groups/{id}/lineup)과 기기 예외로 바꾼다. 옛 필드는 422다`,
   })
   @ApiParam(ID_PARAM)
   @ApiOkResponse({ type: DeviceDto })

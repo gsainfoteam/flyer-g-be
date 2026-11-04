@@ -15,12 +15,14 @@ import {
   playEventDaily,
   playEvents,
   submissions,
+  targetGroups,
   type PlayPlacement,
 } from '../src/db/schema.js';
 import { hashDeviceToken } from '../src/devices/auth/device-token.js';
 import { PlayEventAggregationJob } from '../src/jobs/play-event-aggregation.job.js';
 import {
   createReadyAsset,
+  createTestGroup,
   createTestUser,
   type TestUser,
 } from './helpers/test-user.js';
@@ -28,6 +30,7 @@ import {
 describe('노출 통계 (e2e)', () => {
   let app: INestApplication;
   let db: Database;
+  let groupId: string;
   let job: PlayEventAggregationJob;
   let requester: TestUser;
   let other: TestUser;
@@ -58,6 +61,7 @@ describe('노출 통계 (e2e)', () => {
     reviewer = await createTestUser(app, { roles: ['REVIEWER'] });
     mine = await insertSubmission(requester, '내 공연');
     theirs = await insertSubmission(other, '남의 공연');
+    groupId = await createTestGroup(app);
     deviceA = await insertDevice();
     deviceB = await insertDevice();
   });
@@ -68,6 +72,7 @@ describe('노출 통계 (e2e)', () => {
       .where(inArray(playEventDaily.submissionId, [mine, theirs]));
     // 기기를 지우면 원본 이벤트도 함께 지워진다.
     await db.delete(devices).where(inArray(devices.id, [deviceA, deviceB]));
+    await db.delete(targetGroups).where(eq(targetGroups.id, groupId));
     for (const user of [requester, other, reviewer]) {
       await user.remove();
     }
@@ -100,6 +105,7 @@ describe('노출 통계 (e2e)', () => {
       .insert(devices)
       .values({
         name: 'E2E 통계 TV',
+        programGroupId: groupId,
         tokenHash: hashDeviceToken(`fgd_${randomUUID()}`),
         tokenIssuedAt: now,
         createdAt: now,

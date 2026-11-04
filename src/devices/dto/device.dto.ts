@@ -1,9 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { deviceOrientationEnum, type Device } from '../../db/schema.js';
+import { OVERRIDES_DOC } from '../../lineups/dto/lineup.dto.js';
 import {
-  deviceOrientationEnum,
-  displayLayoutEnum,
-  type Device,
-} from '../../db/schema.js';
+  POSTER_LAYOUTS,
+  type DeviceOverrides,
+  type PosterLayout,
+} from '../../lineups/lineup-schema.js';
 import { ROTATION_SECONDS_DESCRIPTION } from './device-input.dto.js';
 
 export const DEVICE_STATUSES = ['ONLINE', 'OFFLINE', 'DISABLED'] as const;
@@ -20,10 +22,10 @@ export class ResolutionDto {
 export class DeviceLayoutDto {
   @ApiProperty({
     description: 'WALL: 모아 보기, STRIP: 흐르는 띠',
-    enum: displayLayoutEnum.enumValues,
+    enum: POSTER_LAYOUTS,
     example: 'WALL',
   })
-  type: Device['layout'];
+  type: PosterLayout;
 
   @ApiProperty({ description: ROTATION_SECONDS_DESCRIPTION, example: 10 })
   rotationSeconds: number;
@@ -44,8 +46,25 @@ export class DeviceDto {
   })
   location: string | null;
 
-  @ApiProperty({ type: [String], example: ['grp_house_a'] })
+  @ApiProperty({
+    description:
+      '기기가 속한 위치 그룹. 신청의 대상 그룹과 겹치면 이 기기에 나온다',
+    type: [String],
+    example: ['grp_house_a'],
+  })
   groupIds: string[];
+
+  @ApiProperty({
+    description: '편성을 따르는 그룹. groupIds 중 하나다',
+    example: 'grp_house_a',
+  })
+  programGroupId: string;
+
+  @ApiProperty({
+    ...OVERRIDES_DOC,
+    example: { settings: { posterLayout: 'STRIP' }, blocks: {} },
+  })
+  overrides: DeviceOverrides;
 
   @ApiProperty({
     enum: deviceOrientationEnum.enumValues,
@@ -97,10 +116,20 @@ export class DeviceDto {
   })
   status: DeviceStatus;
 
-  @ApiProperty({ type: DeviceLayoutDto })
+  @ApiProperty({
+    description:
+      '**읽기 전용, 지원 중단.** 편성 그룹 설정에 기기 예외를 덮은 실제 값(posterLayout, rotationSeconds). 정리 배포에서 지운다',
+    type: DeviceLayoutDto,
+    deprecated: true,
+  })
   layout: DeviceLayoutDto;
 
-  @ApiProperty({ description: '편성 갱신 주기(초)', example: 60 })
+  @ApiProperty({
+    description:
+      '**읽기 전용, 지원 중단.** 실제 편성 갱신 주기(초). 정리 배포에서 지운다',
+    example: 60,
+    deprecated: true,
+  })
   refreshAfterSeconds: number;
 
   @ApiProperty({

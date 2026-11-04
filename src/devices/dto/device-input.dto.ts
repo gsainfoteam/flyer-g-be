@@ -1,25 +1,23 @@
+import { applyDecorators } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayUnique,
+  Equals,
   IsArray,
   IsBoolean,
   IsIn,
-  IsInt,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
-  Max,
   MaxLength,
-  Min,
   ValidateIf,
 } from 'class-validator';
-import {
-  deviceOrientationEnum,
-  displayLayoutEnum,
-  type Device,
-} from '../../db/schema.js';
+import { openApiOf } from '../../common/validation/zod.js';
+import { deviceOrientationEnum, type Device } from '../../db/schema.js';
+import { deviceOverridesSchema } from '../../lineups/lineup-schema.js';
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -32,24 +30,34 @@ const trimToNull = ({ value }: { value: unknown }) => {
   return trimmed === '' ? null : trimmed;
 };
 
-// 프론트 플레이어가 이 범위로 잘라 쓰므로(요구사항 8.2) 서버도 같은 범위만 저장한다.
-// 화면 전환 방식 개편 전 이름. 프론트가 새 값으로 바꿔 배포할 때까지 받아서 새 값으로 저장한다.
-// 응답에는 새 값만 나간다. 프론트 전환이 끝나면 지운다.
-const LEGACY_LAYOUTS = new Map<unknown, Device['layout']>([
-  ['FOUR_GRID', 'WALL'],
-  ['SINGLE', 'STRIP'],
-]);
-
-const legacyLayout = ({ value }: { value: unknown }) =>
-  LEGACY_LAYOUTS.get(value) ?? value;
-
 // rotationSeconds 설명. 편성 응답(DeviceLayoutDto)과 같은 뜻이다.
 export const ROTATION_SECONDS_DESCRIPTION = `화면 한 장이 머무는 시간(초).
 - WALL: 벽 한 쪽, 크게 보기 한 건이 각각 이 시간만큼 머문다
 - STRIP: 띠가 한 칸 미는 간격이다`;
 
-export const ROTATION_SECONDS_RANGE = { min: 5, max: 60 } as const;
-export const REFRESH_SECONDS_RANGE = { min: 15, max: 300 } as const;
+const MOVED_TO_LINEUP =
+  '화면 설정은 그룹 편성(settings)이나 기기 예외(overrides.settings)로 바꿉니다.';
+
+/**
+ * 그룹 편성으로 옮긴 옛 화면 설정 필드. 조용히 무시하면 운영자가 저장된 줄 알기 때문에 422로 거절한다.
+ * 정리 배포에서 지운다.
+ */
+function MovedToLineup(
+  type: StringConstructor | NumberConstructor,
+): PropertyDecorator {
+  return applyDecorators(
+    ApiPropertyOptional({
+      description: `**받지 않는다(422).** ${MOVED_TO_LINEUP}`,
+      type,
+      deprecated: true,
+    }),
+    ValidateIf((_, value) => value !== undefined),
+    Equals(undefined, { message: MOVED_TO_LINEUP }),
+  );
+}
+
+const PROGRAM_GROUP_DOC = `편성을 따르는 그룹 ID. groupIds 중 하나여야 한다(아니면 422 fields.programGroupId).
+groupIds는 포스터 등 신청의 대상 지정에만 쓰고, 화면 편성은 이 그룹의 편성(GET /signage/target-groups/{id}/lineup)을 따른다`;
 
 /** 생성·수정에 공통인 선택 설정 */
 class DeviceSettingsFields {
@@ -89,54 +97,25 @@ class DeviceSettingsFields {
   })
   orientation?: Device['orientation'];
 
-  @ApiPropertyOptional({
-    enum: displayLayoutEnum.enumValues,
-    description: `편성 응답의 layout.type. WALL: 모아 보기, STRIP: 흐르는 띠.
-예전 값(FOUR_GRID → WALL, SINGLE → STRIP)도 한동안 받아서 새 값으로 저장한다`,
-    default: 'WALL',
-  })
-  @Transform(legacyLayout)
-  @ValidateIf((_, value) => value !== undefined)
-  @IsIn(displayLayoutEnum.enumValues, {
-    message: '레이아웃이 올바르지 않습니다.',
-  })
-  layout?: Device['layout'];
+  @MovedToLineup(String)
+  layout?: unknown;
 
-  @ApiPropertyOptional({
-    description: ROTATION_SECONDS_DESCRIPTION,
-    minimum: ROTATION_SECONDS_RANGE.min,
-    maximum: ROTATION_SECONDS_RANGE.max,
-    default: 10,
-  })
-  @ValidateIf((_, value) => value !== undefined)
-  @IsInt({ message: '전환 간격은 정수(초)여야 합니다.' })
-  @Min(ROTATION_SECONDS_RANGE.min, {
-    message: `전환 간격은 ${ROTATION_SECONDS_RANGE.min}초 이상이어야 합니다.`,
-  })
-  @Max(ROTATION_SECONDS_RANGE.max, {
-    message: `전환 간격은 ${ROTATION_SECONDS_RANGE.max}초 이하여야 합니다.`,
-  })
-  rotationSeconds?: number;
+  @MovedToLineup(Number)
+  rotationSeconds?: unknown;
 
-  @ApiPropertyOptional({
-    description:
-      '편성 갱신 주기(초). 게시 중단이 기기에 반영되기까지의 최대 시간이다',
-    minimum: REFRESH_SECONDS_RANGE.min,
-    maximum: REFRESH_SECONDS_RANGE.max,
-    default: 60,
-  })
-  @ValidateIf((_, value) => value !== undefined)
-  @IsInt({ message: '갱신 주기는 정수(초)여야 합니다.' })
-  @Min(REFRESH_SECONDS_RANGE.min, {
-    message: `갱신 주기는 ${REFRESH_SECONDS_RANGE.min}초 이상이어야 합니다.`,
-  })
-  @Max(REFRESH_SECONDS_RANGE.max, {
-    message: `갱신 주기는 ${REFRESH_SECONDS_RANGE.max}초 이하여야 합니다.`,
-  })
-  refreshAfterSeconds?: number;
+  @MovedToLineup(Number)
+  refreshAfterSeconds?: unknown;
 }
 
 export class CreateDeviceDto extends DeviceSettingsFields {
+  @ApiPropertyOptional({
+    description: `${PROGRAM_GROUP_DOC}. 생략하면 groupIds의 첫 번째다. groupIds도 비었으면 422`,
+    example: 'grp_house_a',
+  })
+  @ValidateIf((_, value) => value !== undefined)
+  @IsString({ message: '편성 그룹이 올바르지 않습니다.' })
+  programGroupId?: string;
+
   @ApiProperty({ description: '기기 이름', example: 'A동 로비 TV' })
   @Transform(trim)
   @IsString({ message: '기기 이름을 입력하세요.' })
@@ -161,4 +140,23 @@ export class UpdateDeviceDto extends DeviceSettingsFields {
   @ValidateIf((_, value) => value !== undefined)
   @IsBoolean({ message: '활성 여부가 올바르지 않습니다.' })
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    description: `${PROGRAM_GROUP_DOC}. groupIds를 바꾸면서 지금 편성 그룹을 빼려면 이 값도 같이 바꾼다`,
+    example: 'grp_house_a',
+  })
+  @ValidateIf((_, value) => value !== undefined)
+  @IsString({ message: '편성 그룹이 올바르지 않습니다.' })
+  programGroupId?: string;
+
+  @ApiPropertyOptional({
+    allOf: [openApiOf(deviceOverridesSchema, 'input')],
+    description: `기기 예외. 통째로 바꾼다(빈 객체 {}는 예외 없음).
+- settings: 바꿀 설정 키만 (infoBar·quietHours는 배열 전체)
+- blocks: 편성 그룹의 블록 id → { enabled?, durationSeconds? }. 편성 그룹에 없는 블록 id는 저장할 때 지운다
+- 정보줄이 가리키는 운영 컨텐츠는 있어야 하고 그 칸에 맞는 종류여야 한다. fields 키는 overrides.settings.infoBar.0.programId 같은 점 경로다`,
+  })
+  @ValidateIf((_, value) => value !== undefined)
+  @IsObject({ message: '기기 예외가 올바르지 않습니다.' })
+  overrides?: Record<string, unknown>;
 }
