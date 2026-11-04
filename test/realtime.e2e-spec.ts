@@ -5,7 +5,7 @@ import { eq, inArray } from 'drizzle-orm';
 import request from 'supertest';
 import { WebSocket } from 'ws';
 import { AppModule } from '../src/app.module.js';
-import { RELAY_LIMITS } from '../src/games/game-relay.js';
+import { RELAY_LIMITS } from '../src/realtime/game-relay.js';
 import { DB_CONNECTION, type Database } from '../src/db/index.js';
 import { devices, targetGroups } from '../src/db/schema.js';
 import {
@@ -36,7 +36,7 @@ function closedWith(socket: WebSocket): Promise<number> {
   );
 }
 
-describe('게임 중계 WebSocket (e2e)', () => {
+describe('게임 중계 WebSocket /games/ws (e2e)', () => {
   let app: INestApplication;
   let db: Database;
   let groupId: string;
@@ -105,10 +105,12 @@ describe('게임 중계 WebSocket (e2e)', () => {
     host.send(JSON.stringify({ type: 'auth', token }));
     expect(await nextFrame(host)).toEqual({ type: 'ready' });
 
+    const joined = nextFrame(host);
     const phone = connect(`room=${deviceId}&role=player`);
     const hello = nextFrame(phone);
     await opened(phone);
     expect(await hello).toEqual({ type: 'host', online: true });
+    expect(await joined).toMatchObject({ type: 'join' });
 
     const toHost = nextFrame(host);
     phone.send(JSON.stringify({ type: 'send', data: { kind: 'join' } }));

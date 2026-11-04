@@ -95,14 +95,41 @@ describe('GameRelay', () => {
     });
   });
 
-  it('참가자가 나가면 호스트에게 알린다', () => {
+  it('참가자가 붙고 나가면 호스트에게 알린다', () => {
     const relay = new GameRelay();
     const host = socket('tv');
     const a = socket('a');
     relay.addHost('room', host);
     relay.addPlayer('room', a);
+    expect(host.sent.at(-1)).toEqual({ type: 'join', from: 'a' });
     relay.remove('room', a);
     expect(host.sent.at(-1)).toEqual({ type: 'left', from: 'a' });
+  });
+
+  it('제어 프레임은 연결된 TV에만 가고, 참가자 방은 TV 연결로 치지 않는다', () => {
+    const relay = new GameRelay();
+    const host = socket('tv');
+    relay.addHost('device-1', host);
+    relay.addPlayer('device-2', socket('a'));
+
+    expect(relay.hostIds()).toEqual(['device-1']);
+    expect(relay.hasHost('device-1')).toBe(true);
+    expect(relay.hasHost('device-2')).toBe(false);
+    expect(relay.toHost('device-1', { type: 'reload' })).toBe(true);
+    expect(host.sent.at(-1)).toEqual({ type: 'reload' });
+    expect(relay.toHost('device-2', { type: 'program-changed' })).toBe(false);
+  });
+
+  it('closeHost는 TV 연결을 닫는다', () => {
+    const relay = new GameRelay();
+    const host = socket('tv');
+    relay.addHost('room', host);
+    relay.closeHost('room', RELAY_CLOSE.unauthorized, 'bye');
+    expect(host.closed).toEqual({
+      code: RELAY_CLOSE.unauthorized,
+      reason: 'bye',
+    });
+    relay.closeHost('missing', RELAY_CLOSE.unauthorized, 'bye');
   });
 
   it('방이 차면 받지 않고, 다른 방과는 섞이지 않는다', () => {

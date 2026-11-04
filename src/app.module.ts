@@ -10,7 +10,7 @@ import { validateEnv } from './config/env.js';
 import { DbModule } from './db/db.module.js';
 import { DeviceTelemetryModule } from './device-telemetry/device-telemetry.module.js';
 import { DevicesModule } from './devices/devices.module.js';
-import { GamesModule } from './games/games.module.js';
+import { RealtimeModule } from './realtime/realtime.module.js';
 import { HealthModule } from './health/health.module.js';
 import { JobsModule } from './jobs/jobs.module.js';
 import { PlaylistModule } from './playlist/playlist.module.js';
@@ -47,8 +47,8 @@ import { TargetGroupsModule } from './target-groups/target-groups.module.js';
     DeviceTelemetryModule,
     JobsModule,
     StatsModule,
-    // TV 게임 실시간 중계. 다른 모듈과 격리돼 있어 빼도 나머지는 그대로 동작한다.
-    GamesModule,
+    // TV 실시간 연결(제어 채널·게임 중계). 편성을 바꾸는 모듈도 알림 때문에 가져다 쓴다.
+    RealtimeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

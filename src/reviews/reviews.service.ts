@@ -8,6 +8,7 @@ import { isReviewer } from '../auth/types/role.js';
 import { AppException } from '../common/errors/app.exception.js';
 import { ErrorCode } from '../common/errors/error-code.js';
 import { DB_CONNECTION, type Database } from '../db/index.js';
+import { SignageChanges } from '../realtime/signage-changes.js';
 import {
   reviews,
   users,
@@ -41,6 +42,7 @@ export class ReviewsService {
     private readonly submissionsService: SubmissionsService,
     private readonly assetsService: AssetsService,
     private readonly auditService: AuditService,
+    private readonly signageChanges: SignageChanges,
   ) {}
 
   /**
@@ -102,6 +104,7 @@ export class ReviewsService {
         at: now,
       });
     });
+    this.signageChanges.emit({ scope: 'ALL' });
     return this.submissionsService.detail(id, now, reviewer);
   }
 
@@ -145,7 +148,7 @@ export class ReviewsService {
 
   /**
    * 승인된 게시를 내린다. 급하게 내리는 경우라 revision을 받지 않는다.
-   * 기기에는 다음 편성 동기화 때 반영된다.
+   * 연결된 기기에는 곧바로 program-changed를 보낸다.
    */
   async suspend(
     reviewer: AuthUser,
@@ -186,6 +189,7 @@ export class ReviewsService {
         at: now,
       });
     });
+    this.signageChanges.emit({ scope: 'ALL' });
     return this.submissionsService.detail(id, now, reviewer);
   }
 

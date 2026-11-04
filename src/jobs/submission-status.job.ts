@@ -3,6 +3,7 @@ import { and, gt, inArray, lte, sql } from 'drizzle-orm';
 import { AuditService, type AuditAction } from '../audit/audit.service.js';
 import { DB_CONNECTION, type Database, type Transaction } from '../db/index.js';
 import { submissions, type SubmissionStatus } from '../db/schema.js';
+import { SignageChanges } from '../realtime/signage-changes.js';
 import { JobLock, withJobLock } from './job-lock.js';
 
 export type StatusSyncResult = {
@@ -20,9 +21,19 @@ export class SubmissionStatusJob {
   constructor(
     @Inject(DB_CONNECTION) private readonly db: Database,
     private readonly auditService: AuditService,
+    private readonly signageChanges: SignageChanges,
   ) {}
 
-  run(now = new Date()): Promise<StatusSyncResult | null> {
+  /** 게시가 시작되거나 끝난 것이 있으면 연결된 TV에 알린다 */
+  async run(now = new Date()): Promise<StatusSyncResult | null> {
+    const result = await this.sync(now);
+    if (result && result.published + result.ended > 0) {
+      this.signageChanges.emit({ scope: 'ALL' });
+    }
+    return result;
+  }
+
+  private sync(now: Date): Promise<StatusSyncResult | null> {
     return withJobLock(this.db, JobLock.SUBMISSION_STATUS, async (tx) => {
       // 끝난 것부터 처리해야 기간이 지난 건이 PUBLISHED로 잘못 가지 않는다.
       const ended = await this.move(

@@ -34,6 +34,7 @@ import { CreateDeviceDto, UpdateDeviceDto } from './dto/device-input.dto.js';
 import {
   DeviceDto,
   DeviceListDto,
+  DeviceReloadDto,
   DeviceSessionDto,
   DeviceWithTokenDto,
 } from './dto/device.dto.js';
@@ -120,7 +121,8 @@ TV 설정: 프론트가 \`https://<프론트>/display/{id}#token={token}\` 같�
   @ApiOperation({
     summary: '기기 수정',
     description: `보낸 필드만 바꾼다. 감사 로그 DEVICE_UPDATED (metadata.changedFields)
-- \`isActive: false\`면 비활성(DISABLED)이 되어 토큰으로 접근할 수 없다
+- \`isActive: false\`면 비활성(DISABLED)이 되어 토큰으로 접근할 수 없다. 열린 제어 채널도 4001로 닫는다
+- 그 밖의 변경은 연결된 TV에 program-changed로 알린다
 - \`groupIds\`는 통째로 바꾼다. 편성 그룹(\`programGroupId\`)은 groupIds 중 하나여야 한다
 - \`overrides\`(기기 예외)는 통째로 바꾼다. 편성 그룹에 없는 블록 예외는 저장할 때 지운다
 - 화면 설정은 그룹 편성(PUT /signage/target-groups/{id}/lineup)과 기기 예외로 바꾼다. 옛 필드는 422다`,
@@ -144,7 +146,7 @@ TV 설정: 프론트가 \`https://<프론트>/display/{id}#token={token}\` 같�
   @ApiOperation({
     summary: '기기 토큰 재발급',
     description:
-      '새 토큰을 발급하고 **이전 토큰은 즉시 무효**가 된다. 토큰을 잃어버렸거나 유출됐을 때 쓴다. 새 토큰은 이 응답에서만 볼 수 있다.',
+      '새 토큰을 발급하고 **이전 토큰은 즉시 무효**가 된다. 이전 토큰으로 연 제어 채널(/devices/ws)도 4001로 닫는다. 토큰을 잃어버렸거나 유출됐을 때 쓴다. 새 토큰은 이 응답에서만 볼 수 있다.',
   })
   @ApiParam(ID_PARAM)
   @ApiOkResponse({ type: DeviceWithTokenDto })
@@ -155,6 +157,22 @@ TV 설정: 프론트가 \`https://<프론트>/display/{id}#token={token}\` 같�
     @Param('id', deviceIdPipe) id: string,
   ): Promise<DeviceWithTokenDto> {
     return this.devicesService.rotateToken(user, id);
+  }
+
+  @Post(':id/reload')
+  @HttpCode(200)
+  @Roles('SUPER_ADMIN')
+  @ApiOperation({
+    summary: 'TV 새로고침',
+    description:
+      '제어 채널(/devices/ws)로 `reload`를 보내 TV가 페이지를 다시 불러오게 한다. 연결돼 있지 않으면 `delivered: false`이고 나중에 다시 보내지 않는다. 연결 여부는 기기 응답의 controlConnected로 본다',
+  })
+  @ApiParam(ID_PARAM)
+  @ApiOkResponse({ type: DeviceReloadDto })
+  @ApiForbiddenResponse(SUPER_ADMIN_ONLY)
+  @ApiNotFoundResponse(NOT_FOUND_DOC)
+  reload(@Param('id', deviceIdPipe) id: string): Promise<DeviceReloadDto> {
+    return this.devicesService.reload(id);
   }
 }
 

@@ -30,7 +30,9 @@ import {
   type RelaySocket,
 } from './game-relay.js';
 
-/** 게임 연결 경로. REST API와 같은 호스트에 둔다. */
+/** TV 연결 경로. 제어 채널이자 게임 호스트다. 기기는 기기 토큰으로 정한다. */
+export const DEVICE_SOCKET_PATH = '/devices/ws';
+/** 게임 연결 경로. 참가자(폰)용. `role=host`는 정리 때까지 남긴다. */
 export const GAME_SOCKET_PATH = '/games/ws';
 
 const ROOM_CACHE_MS = 60_000;
@@ -41,22 +43,28 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type Role = 'host' | 'player';
 
 /**
- * TV 게임용 WebSocket. `wss://<api>/games/ws?room=<기기 id>&role=host|player`
+ * TV·게임 WebSocket. REST API와 같은 호스트에 둔다.
+ *
+ * - `wss://<api>/devices/ws`: TV 하나의 연결. 연결 뒤 첫 메시지로 `{ type: "auth", token }`을
+ *   보낸다(5초 안). 토큰이 정한 기기가 방이 된다. 서버는 이 연결로 제어 프레임
+ *   (`program-changed`, `reload`)을 보내고, 같은 연결이 그 방의 게임 호스트다.
+ * - `wss://<api>/games/ws?room=<기기 id>&role=player`: 참가자(폰). 로그인 없이 붙는다.
+ *   이름 같은 정보는 게임 메시지에 실어 TV가 다룬다.
+ * - `wss://<api>/games/ws?room=<기기 id>&role=host`: 이전 TV 경로. `/devices/ws`와 같고,
+ *   토큰이 다른 기기의 것이면 4003으로 닫는다.
  *
  * 기존 HTTP 라우트·가드와 섞이지 않게 Nest의 WebSocket 게이트웨이 대신 HTTP 서버의
- * upgrade 요청을 이 경로만 직접 받는다. 이 모듈을 빼면 서버는 이전과 똑같이 동작한다.
+ * upgrade 요청을 이 경로들만 직접 받는다. 토큰은 URL에 싣지 않는다(로그에 남는다).
+ * 메시지는 `{ type: "send", data }` 하나다. 크기·빈도 상한을 넘으면 버린다.
  *
- * - 호스트(TV): 연결 뒤 첫 메시지로 `{ type: "auth", token }`을 보낸다. 토큰은 그 방
- *   (기기)의 기기 토큰이어야 한다. URL에 싣지 않는다(로그에 남는다).
- * - 참가자(폰): 로그인 없이 붙는다. 이름 같은 정보는 게임 메시지에 실어 TV가 다룬다.
- * - 메시지는 `{ type: "send", data }` 하나다. 크기·빈도 상한을 넘으면 버린다.
+ * 연결은 이 프로세스 메모리에만 있다. TV와 참가자, 변경을 일으킨 요청이 같은 프로세스에
+ * 있어야 하므로 서버는 하나만 띄운다(지금 게임 중계와 같은 전제).
  */
 @Injectable()
-export class GameSocketService
+export class RealtimeSocketService
   implements OnApplicationBootstrap, OnApplicationShutdown
 {
-  private readonly logger = new Logger(GameSocketService.name);
-  private readonly relay = new GameRelay();
+  private readonly logger = new Logger(RealtimeSocketService.name);
   private server: WebSocketServer | null = null;
   private heartbeat: NodeJS.Timeout | null = null;
   private readonly alive = new WeakSet<WebSocket>();
@@ -72,6 +80,7 @@ export class GameSocketService
     private readonly adapterHost: HttpAdapterHost,
     private readonly config: ConfigService<Env, true>,
     @Inject(DB_CONNECTION) private readonly db: Database,
+    private readonly relay: GameRelay,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -89,8 +98,17 @@ export class GameSocketService
 
     httpServer.on('upgrade', (request, socket, head) => {
       const url = new URL(request.url ?? '/', 'http://localhost');
+      if (url.pathname === DEVICE_SOCKET_PATH) {
+        this.handleUpgrade(request, socket, head, null, 'host');
+        return;
+      }
       if (url.pathname === GAME_SOCKET_PATH) {
-        this.handleUpgrade(request, socket, head, url);
+        const roomId = url.searchParams.get('room');
+        const role = url.searchParams.get('role');
+        if (!isValidRoomId(roomId) || (role !== 'host' && role !== 'player')) {
+          return this.reject(socket, 400, 'Bad Request');
+        }
+        this.handleUpgrade(request, socket, head, roomId, role);
         return;
       }
       // 다른 경로의 upgrade는 원래대로 둔다. Node는 upgrade 리스너가 하나도 없을 때만
@@ -113,7 +131,9 @@ export class GameSocketService
     // 이 타이머 때문에 프로세스가 내려가지 못하는 일이 없게 한다(테스트 등).
     this.heartbeat.unref();
 
-    this.logger.log(`Game sockets listening on ${GAME_SOCKET_PATH}`);
+    this.logger.log(
+      `Sockets listening on ${DEVICE_SOCKET_PATH} and ${GAME_SOCKET_PATH}`,
+    );
   }
 
   onApplicationShutdown(): void {
@@ -143,17 +163,14 @@ export class GameSocketService
     }
   }
 
+  /** roomId가 null이면 `/devices/ws`다. 방은 인증한 기기로 정한다. */
   private handleUpgrade(
     request: IncomingMessage,
     socket: Duplex,
     head: Buffer,
-    url: URL,
+    roomId: string | null,
+    role: Role,
   ) {
-    const roomId = url.searchParams.get('room');
-    const role = url.searchParams.get('role');
-    if (!isValidRoomId(roomId) || (role !== 'host' && role !== 'player')) {
-      return this.reject(socket, 400, 'Bad Request');
-    }
     if (!this.allowedOrigin(request.headers.origin)) {
       return this.reject(socket, 403, 'Forbidden');
     }
@@ -166,26 +183,28 @@ export class GameSocketService
       request.headers['x-forwarded-for'],
       request.socket.remoteAddress,
     );
-    const roomKey = `${ip}|${roomId}`;
+    // 방을 아는 연결만 IP·방별로 센다. TV(`/devices/ws`)는 인증해야 방을 안다.
+    const keys = roomId === null ? [ip] : [ip, `${ip}|${roomId}`];
     if (
       this.perIp.get(ip) >= RELAY_LIMITS.maxConnectionsPerIp ||
-      this.perIp.get(roomKey) >= RELAY_LIMITS.maxConnectionsPerIpPerRoom
+      (roomId !== null &&
+        this.perIp.get(keys[1]!) >= RELAY_LIMITS.maxConnectionsPerIpPerRoom)
     ) {
       return this.reject(socket, 429, 'Too Many Requests');
     }
     // 연결 수를 먼저 잡아 둔다. 방 확인을 기다리는 사이 같은 IP가 한꺼번에 몰려도
     // 상한을 넘지 못한다.
-    this.perIp.add(ip);
-    this.perIp.add(roomKey);
+    for (const key of keys) this.perIp.add(key);
     const release = () => {
-      this.perIp.remove(ip);
-      this.perIp.remove(roomKey);
+      for (const key of keys) this.perIp.remove(key);
     };
 
     // 참가자는 실제 기기의 방에만 붙는다. 없는 방에 연결을 쌓아 두지 못하게 한다.
     // TV는 기기 토큰으로 따로 확인한다.
     const check =
-      role === 'player' ? this.roomExists(roomId) : Promise.resolve(true);
+      role === 'player' && roomId !== null
+        ? this.roomExists(roomId)
+        : Promise.resolve(true);
     void check.then((exists) => {
       // 확인을 기다리는 사이 요청자가 떠났으면 정리만 한다.
       if (socket.destroyed) return release();
@@ -221,7 +240,7 @@ export class GameSocketService
     }
   }
 
-  private accept(client: WebSocket, roomId: string, role: Role) {
+  private accept(client: WebSocket, requestedRoom: string | null, role: Role) {
     const socket: RelaySocket = {
       id: randomUUID(),
       send: (text) => {
@@ -230,23 +249,24 @@ export class GameSocketService
       close: (code, reason) => client.close(code, reason),
     };
     const budget = new MessageBudget(Date.now());
-    let joined = false;
+    /** 방에 들어간 뒤에만 정해진다. TV는 인증해야 정해진다. */
+    let roomId: string | null = null;
 
     this.alive.add(client);
     client.on('pong', () => this.alive.add(client));
     client.on('close', () => {
-      if (joined) this.relay.remove(roomId, socket);
+      if (roomId !== null) this.relay.remove(roomId, socket);
     });
     client.on('error', (error) =>
       this.logger.warn(`Socket error: ${error.message}`),
     );
 
     if (role === 'player') {
-      if (!this.relay.addPlayer(roomId, socket)) {
+      if (!this.relay.addPlayer(requestedRoom!, socket)) {
         client.close(RELAY_CLOSE.roomFull, 'Room is full');
         return;
       }
-      joined = true;
+      roomId = requestedRoom;
     } else {
       const timer = setTimeout(
         () =>
@@ -256,27 +276,27 @@ export class GameSocketService
       client.once('close', () => clearTimeout(timer));
       client.once('message', (raw) => {
         clearTimeout(timer);
-        void this.authenticateHost(raw, roomId).then((result) => {
+        void this.authenticateHost(raw).then((deviceId) => {
           if (client.readyState !== WebSocket.OPEN) return;
-          if (result !== 'ok') {
+          if (deviceId === null) {
+            client.close(RELAY_CLOSE.unauthorized, 'Invalid device token');
+            return;
+          }
+          if (requestedRoom !== null && deviceId !== requestedRoom) {
             client.close(
-              result === 'forbidden'
-                ? RELAY_CLOSE.forbidden
-                : RELAY_CLOSE.unauthorized,
-              result === 'forbidden'
-                ? 'Token does not match this room'
-                : 'Invalid device token',
+              RELAY_CLOSE.forbidden,
+              'Token does not match this room',
             );
             return;
           }
-          joined = true;
-          this.relay.addHost(roomId, socket);
+          roomId = deviceId;
+          this.relay.addHost(deviceId, socket);
         });
       });
     }
 
     client.on('message', (raw) => {
-      if (!joined || !budget.take(Date.now())) return;
+      if (roomId === null || !budget.take(Date.now())) return;
       const data = readSend(raw);
       if (data === undefined) return;
       if (role === 'host') this.relay.fromHost(roomId, socket, data);
@@ -284,17 +304,14 @@ export class GameSocketService
     });
   }
 
-  /** 첫 메시지의 기기 토큰이 이 방(기기)의 활성 토큰인지 본다. */
-  private async authenticateHost(
-    raw: RawData,
-    roomId: string,
-  ): Promise<'ok' | 'unauthorized' | 'forbidden'> {
+  /** 첫 메시지의 기기 토큰이 활성 기기의 것이면 그 기기 id */
+  private async authenticateHost(raw: RawData): Promise<string | null> {
     const frame = parse(raw);
     const token =
       frame && frame.type === 'auth' && typeof frame.token === 'string'
         ? frame.token
         : null;
-    if (!token || !looksLikeDeviceToken(token)) return 'unauthorized';
+    if (!token || !looksLikeDeviceToken(token)) return null;
 
     try {
       const [device] = await this.db
@@ -306,11 +323,10 @@ export class GameSocketService
             eq(devices.isActive, true),
           ),
         );
-      if (!device) return 'unauthorized';
-      return device.id === roomId ? 'ok' : 'forbidden';
+      return device?.id ?? null;
     } catch (error) {
       this.logger.error('Failed to verify device token', error);
-      return 'unauthorized';
+      return null;
     }
   }
 }

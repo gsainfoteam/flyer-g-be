@@ -3,6 +3,7 @@ import type { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { NextFunction, Request, Response } from 'express';
+import { SOCKET_PROTOCOL_DOC } from '../realtime/socket-protocol.doc.js';
 import type { Env } from './env.js';
 
 export const SWAGGER_PATH = 'docs';
@@ -32,7 +33,9 @@ export function setupSwagger(app: INestApplication): void {
     app,
     new DocumentBuilder()
       .setTitle('Flyer-G API')
-      .setDescription('Flyer-G 디지털 사이니지 게시 신청·편성 백엔드 API')
+      .setDescription(
+        `Flyer-G 디지털 사이니지 게시 신청·편성 백엔드 API\n${SOCKET_PROTOCOL_DOC}`,
+      )
       .setVersion('0.0.1')
       .addBearerAuth(
         {
