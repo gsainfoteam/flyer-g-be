@@ -14,7 +14,7 @@ import { and, eq } from 'drizzle-orm';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import type { Env } from '../config/env.js';
 import { DB_CONNECTION, type Database } from '../db/index.js';
-import { devices } from '../db/schema.js';
+import { devices, games} from '../db/schema.js';
 import {
   hashDeviceToken,
   looksLikeDeviceToken,
@@ -267,6 +267,7 @@ export class RealtimeSocketService
         return;
       }
       roomId = requestedRoom;
+      this.recordVisit(requestedRoom!);
     } else {
       const timer = setTimeout(
         () =>
@@ -302,6 +303,16 @@ export class RealtimeSocketService
       if (role === 'host') this.relay.fromHost(roomId, socket, data);
       else this.relay.fromPlayer(roomId, socket, data);
     });
+  }
+
+  /**게임 접속 기록을 남긴다. 기다리지 않는다. 실패해도 게임은 그대로 이어지고 로그만 남긴다. */
+  private recordVisit(deviceId: string): void {
+    this.db
+      .insert(games)
+      .values({ deviceId })
+      .catch((error: unknown) =>
+        this.logger.warn('Failed to record game visit', error),
+      );
   }
 
   /** 첫 메시지의 기기 토큰이 활성 기기의 것이면 그 기기 id */

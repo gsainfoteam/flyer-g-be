@@ -546,6 +546,27 @@ export const deviceTargetGroups = pgTable(
 export type Device = typeof devices.$inferSelect;
 
 /**
+ * 게임 접속 기록. 폰이 TV 방(기기)에 들어올 때마다 한 줄. 구관/신관은 기기로 구분한다.
+ * 새로고침·네트워크 변경도 한 번으로 센다(사람 수가 아니라 접속 횟수).
+ */
+export const games = pgTable(
+  'games',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    deviceId: uuid('device_id')
+      .notNull()
+      .references(() => devices.id, { onDelete: 'cascade' }),
+    // 서버가 연결을 받은 시각
+    connectedAt: timestamp('connected_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('games_device_connected_idx').on(table.deviceId, table.connectedAt),
+  ],
+);
+
+/**
  * 운영 컨텐츠(D-day·운세·학식…). type은 src/programs/program-types.ts의 종류이고, params 모양은 그 종류가 정한다.
  * 편성 블록이 FK로 가리키므로 테이블을 먼저 둔다.
  */

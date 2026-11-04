@@ -162,6 +162,13 @@
       "when": 1793776799500,
       "tag": "0022_event_banner_headline",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793811622867,
+      "tag": "0023_game",
+      "breakpoints": true
     }
   ]
 }
