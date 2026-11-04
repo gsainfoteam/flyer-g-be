@@ -4,14 +4,17 @@ import {
   IsInt,
   IsISO8601,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
   Matches,
   Max,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { NowPlayingDto } from '../../devices/dto/now-playing.dto.js';
 
 const WITH_OFFSET = /(Z|[+-]\d{2}:\d{2})$/;
 
@@ -64,4 +67,16 @@ export class HeartbeatDto {
   @ValidateNested()
   @Type(() => ResolutionInputDto)
   resolution: ResolutionInputDto;
+
+  @ApiPropertyOptional({
+    description:
+      '지금 장면. 서버는 마지막 값을 기기 응답의 now에 그대로 싣는다. 보내지 않으면(옛 플레이어) null로 둔다. 형식이 틀리면 heartbeat 전체가 422이므로 주의한다',
+    type: NowPlayingDto,
+    nullable: true,
+  })
+  @ValidateIf((_, value) => value !== undefined && value !== null)
+  @IsObject({ message: '지금 장면이 올바르지 않습니다.' })
+  @ValidateNested()
+  @Type(() => NowPlayingDto)
+  now?: NowPlayingDto | null;
 }

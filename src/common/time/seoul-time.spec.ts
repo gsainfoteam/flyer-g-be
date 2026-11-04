@@ -3,6 +3,7 @@ import {
   addSeoulDays,
   isSeoulMidnight,
   seoulDate,
+  seoulMinuteOfDay,
   startOfSeoulDay,
 } from './seoul-time.js';
 
@@ -54,5 +55,13 @@ describe('isSeoulMidnight', () => {
     expect(isSeoulMidnight(new Date('2026-10-30T15:00:00.000Z'))).toBe(true);
     expect(isSeoulMidnight(new Date('2026-10-31T00:00:00.000Z'))).toBe(false);
     expect(isSeoulMidnight(new Date('2026-10-30T15:00:00.001Z'))).toBe(false);
+  });
+});
+
+describe('seoulMinuteOfDay', () => {
+  it('서울 벽시계의 분', () => {
+    expect(seoulMinuteOfDay(new Date('2026-11-01T15:00:00Z'))).toBe(0);
+    expect(seoulMinuteOfDay(new Date('2026-11-01T14:59:00Z'))).toBe(1439);
+    expect(seoulMinuteOfDay(new Date('2026-11-02T03:10:00+09:00'))).toBe(190);
   });
 });

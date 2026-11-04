@@ -43,9 +43,11 @@ export class DeviceTelemetryController {
   @DeviceAuth()
   @ApiOperation({
     summary: 'heartbeat',
-    description: `60초마다 보낸다. 최신 상태 하나만 의미가 있어 서버는 덮어쓴다.
+    description: `30초마다 보낸다. 최신 상태 하나만 의미가 있어 서버는 덮어쓴다.
 
-- 기기 상태(ONLINE·OFFLINE)는 서버가 받은 시각으로 판정한다. 3분 안에 오면 ONLINE이다
+- 기기 상태(ONLINE·OFFLINE)는 서버가 받은 시각으로 판정한다. 90초 안에 오면 ONLINE이다(세 번 연속 빠지면 OFFLINE)
+- 화면 끔 시간(편성 settings.quietHours)에는 heartbeat와 상관없이 SLEEPING이다
+- \`now\`(지금 장면)는 기기 응답의 \`now\`에 그대로 실린다
 - 실패해도 재생을 멈추지 않고 다음 주기를 기다린다(재전송 없음)
 - 응답 본문은 없다(204)`,
   })

@@ -3,6 +3,10 @@ import { Inject, Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { DB_CONNECTION, type Database } from '../db/index.js';
 import { devices, playEvents, type Device } from '../db/schema.js';
+import type {
+  NowPlaying,
+  NowPlayingDto,
+} from '../devices/dto/now-playing.dto.js';
 import type { HeartbeatDto } from './dto/heartbeat.dto.js';
 import type {
   PlayEventDto,
@@ -28,6 +32,7 @@ export class DeviceTelemetryService {
         lastRenderOkAt: dto.lastRenderOkAt
           ? new Date(dto.lastRenderOkAt)
           : null,
+        nowPlaying: dto.now ? nowPlayingOf(dto.now) : null,
       })
       .where(eq(devices.id, device.id));
   }
@@ -70,4 +75,17 @@ export class DeviceTelemetryService {
       duplicates: events.length - inserted.length,
     };
   }
+}
+
+/** 받은 값만 골라 담고 시각은 UTC ISO로 맞춘다 */
+function nowPlayingOf(now: NowPlayingDto): NowPlaying {
+  return {
+    blockId: now.blockId,
+    live: now.live,
+    kind: now.kind,
+    label: now.label,
+    submissionIds: now.submissionIds,
+    startedAt: new Date(now.startedAt).toISOString(),
+    endsAt: now.endsAt === null ? null : new Date(now.endsAt).toISOString(),
+  };
 }

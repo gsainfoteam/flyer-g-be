@@ -134,6 +134,91 @@ describe('기기 런타임 (e2e)', () => {
       });
     });
 
+    it('지금 장면(now)을 저장해 기기 응답에 그대로 싣는다', async () => {
+      const submissionId = randomUUID();
+      await heartbeat(tv, {
+        appVersion: '0.5.0',
+        resolution: { width: 1920, height: 1080 },
+        now: {
+          blockId: 'blk_cafeteria',
+          live: false,
+          kind: 'PROGRAM',
+          label: '오늘의 학식',
+          submissionIds: [submissionId],
+          startedAt: '2026-10-30T12:09:52+09:00',
+          endsAt: null,
+        },
+      }).expect(204);
+      expect((await deviceDetail(tv.id)).body.now).toEqual({
+        blockId: 'blk_cafeteria',
+        live: false,
+        kind: 'PROGRAM',
+        label: '오늘의 학식',
+        submissionIds: [submissionId],
+        startedAt: '2026-10-30T03:09:52.000Z',
+        endsAt: null,
+      });
+
+      // 보내지 않는 옛 플레이어는 null
+      await heartbeat(tv, {
+        appVersion: '0.4.3',
+        resolution: { width: 1920, height: 1080 },
+      }).expect(204);
+      expect((await deviceDetail(tv.id)).body.now).toBeNull();
+    });
+
+    it('지금 장면 형식이 틀리면 422', async () => {
+      const res = await heartbeat(tv, {
+        appVersion: '0.5.0',
+        resolution: { width: 1920, height: 1080 },
+        now: {
+          blockId: null,
+          live: 'no',
+          kind: 'DANCE',
+          label: null,
+          submissionIds: ['x'],
+          startedAt: '2026-10-30T03:09:52',
+          endsAt: null,
+        },
+      }).expect(422);
+      expect(res.body.fields).toEqual({
+        'now.live': 'live가 올바르지 않습니다.',
+        'now.kind': '장면 종류가 올바르지 않습니다.',
+        'now.submissionIds': '신청 ID가 올바르지 않습니다.',
+        'now.startedAt': '시간대가 있는 ISO 시각이어야 합니다.',
+      });
+    });
+
+    it('화면 끔 시간에는 heartbeat와 상관없이 SLEEPING', async () => {
+      const device = await register();
+      // 서울 지금 시각 앞뒤 1시간
+      const minute = Math.floor((Date.now() + 9 * 3600_000) / 60_000) % 1440;
+      const clock = (m: number) => {
+        const wrapped = (m + 1440) % 1440;
+        return `${String(Math.floor(wrapped / 60)).padStart(2, '0')}:${String(wrapped % 60).padStart(2, '0')}`;
+      };
+      const quietHours = [
+        { start: clock(minute - 60), end: clock(minute + 60) },
+      ];
+      const patchOverrides = (overrides: object) =>
+        request(app.getHttpServer())
+          .patch(`/signage/devices/${device.id}`)
+          .set('Authorization', admin.authHeader)
+          .send({ overrides })
+          .expect(200);
+
+      const sleeping = await patchOverrides({ settings: { quietHours } });
+      expect(sleeping.body.status).toBe('SLEEPING');
+      await heartbeat(device, {
+        appVersion: '0.5.0',
+        resolution: { width: 1920, height: 1080 },
+      }).expect(204);
+      expect((await deviceDetail(device.id)).body.status).toBe('SLEEPING');
+
+      const awake = await patchOverrides({});
+      expect(awake.body.status).toBe('ONLINE');
+    });
+
     it('형식이 틀리면 422', async () => {
       const res = await heartbeat(tv, {
         appVersion: '',
