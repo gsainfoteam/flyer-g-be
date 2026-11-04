@@ -47,6 +47,7 @@ const template: EventBannerDetail = {
   mode: 'TEMPLATE',
   occasion: 'BIRTHDAY',
   recipient: '지민',
+  headline: '지민아, 생일 축하해',
   message: '생일 축하해!',
   sender: '3층 친구들',
   photoConsent: true,

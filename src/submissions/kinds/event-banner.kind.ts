@@ -25,6 +25,7 @@ const DAY_MS = 86_400_000;
 const OCCASION_LABELS: Record<EventBannerOccasion, string> = {
   BIRTHDAY: '생일',
   ADMISSION: '합격',
+  GRADUATION: '졸업',
   AWARD: '수상',
   WELCOME: '환영',
   OTHER: '소식',
@@ -106,6 +107,9 @@ export const EVENT_BANNER_KIND: SubmissionKind<EventBannerDetail> = {
       if (!banner.occasion) {
         errors['eventBanner.occasion'] = '어떤 소식인지 고르세요.';
       }
+      if (!banner.headline) {
+        errors['eventBanner.headline'] = '큰 문구를 입력하세요.';
+      }
       if (!banner.message) {
         errors['eventBanner.message'] = '전할 말을 입력하세요.';
       }
@@ -152,6 +156,7 @@ export const EVENT_BANNER_KIND: SubmissionKind<EventBannerDetail> = {
         mode: banner.mode,
         occasion,
         recipient: banner.recipient,
+        headline: banner.headline ?? null,
         message: banner.message ?? null,
         sender: banner.sender ?? null,
         photoConsent: isTemplate && mediaId !== null && !!banner.photoConsent,
@@ -188,6 +193,7 @@ export const EVENT_BANNER_KIND: SubmissionKind<EventBannerDetail> = {
         a.mode === b.mode &&
         a.occasion === b.occasion &&
         a.recipient === b.recipient &&
+        a.headline === b.headline &&
         a.message === b.message &&
         a.sender === b.sender &&
         a.photoConsent === b.photoConsent
@@ -218,6 +224,7 @@ export const EVENT_BANNER_KIND: SubmissionKind<EventBannerDetail> = {
       mode: detail.mode,
       occasion: detail.occasion,
       recipient: detail.recipient,
+      headline: detail.headline,
       message: detail.message,
       sender: detail.sender,
     };
@@ -242,6 +249,7 @@ function emptyDetail(): EventBannerDetail {
     mode: 'TEMPLATE',
     occasion: null,
     recipient: '',
+    headline: null,
     message: null,
     sender: null,
     photoConsent: false,

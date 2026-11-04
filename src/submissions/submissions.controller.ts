@@ -93,7 +93,7 @@ export class SubmissionsController {
 
 **EVENT_BANNER** (\`eventBanner\`만 받는다. 제목은 서버가 "생일 · 지민에게"처럼 만든다)
 - 기간: 시작·종료 모두 서울 자정(00:00), 1~\`eventBannerMaxDays\`일. 당일 신청도 된다
-- TEMPLATE: \`occasion\`·\`recipient\`·\`message\` 필수. 사진(\`photoAssetId\`)은 선택이고, 있으면 \`photoConsent: true\` 필수. \`assetId\`는 쓸 수 없다
+- TEMPLATE: \`occasion\`·\`recipient\`·\`headline\`·\`message\` 필수. TV에는 \`headline\`이 크게 나오고, \`recipient\`는 목록 제목에 쓴다. 사진(\`photoAssetId\`)은 선택이고, 있으면 \`photoConsent: true\` 필수. \`assetId\`는 쓸 수 없다
 - IMAGE: \`assetId\`(본인 이미지, 영상 불가)와 \`recipient\` 필수. \`photoAssetId\`는 쓸 수 없다
 - 하루 3건`,
   })
