@@ -396,7 +396,7 @@ describe('기기 등록과 인증 (e2e)', () => {
 
       const missingProgram = await patch(id, {
         overrides: {
-          settings: { infoBar: [{ item: 'WEATHER', programId: 'prg_nope' }] },
+          settings: { infoBar: [{ item: 'DDAY', programId: 'prg_nope' }] },
         },
       }).expect(422);
       expect(missingProgram.body.fields).toEqual({

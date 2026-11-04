@@ -17,6 +17,7 @@ import {
 import { AssetsService } from '../assets/assets.service.js';
 import { AppException } from '../common/errors/app.exception.js';
 import { ErrorCode } from '../common/errors/error-code.js';
+import { programDataOf } from '../programs/program-types.js';
 import { DB_CONNECTION, type Database } from '../db/index.js';
 import {
   assets,
@@ -151,7 +152,7 @@ export class PlaylistService {
 
     const [submissionItems, programItems] = await Promise.all([
       this.submissionItems(rows),
-      this.programsOf(programIds),
+      this.programsOf(programIds, now),
     ]);
     // 지워진 운영 컨텐츠를 가리키면 main을 내린다(계획 1-5)
     if (shownProgram && !programItems[shownProgram]) {
@@ -285,6 +286,7 @@ export class PlaylistService {
 
   private async programsOf(
     ids: string[],
+    now: Date,
   ): Promise<Record<string, PlaylistProgramDto>> {
     const unique = [...new Set(ids)];
     if (unique.length === 0) {
@@ -298,8 +300,13 @@ export class PlaylistService {
     return Object.fromEntries(
       rows.map((row) => [
         row.id,
-        // data는 운영 컨텐츠 종류(⑩)가 만든다
-        { type: row.type, name: row.name, params: row.params, data: null },
+        {
+          type: row.type,
+          name: row.name,
+          params: row.params,
+          // 운영 컨텐츠 종류가 만든다. 만들 것이 없는 종류는 null
+          data: programDataOf(row, { now }),
+        },
       ]),
     );
   }

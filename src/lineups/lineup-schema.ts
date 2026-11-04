@@ -1,5 +1,7 @@
 import { z } from 'zod';
+import { strictObject as strict } from '../common/validation/zod.js';
 import { submissionTypeEnum, type SubmissionType } from '../db/schema.js';
+import { INFO_BAR_ITEMS } from '../programs/program-types.js';
 
 /**
  * 그룹 편성과 기기 예외의 모양. jsonb 컬럼(group_lineups.settings, lineup_blocks.schedule,
@@ -37,15 +39,6 @@ const intIn = (
     .min(range.min, `${subject} ${range.min}${unit} 이상이어야 합니다.`)
     .max(range.max, `${subject} ${range.max}${unit} 이하여야 합니다.`);
 
-/** 모르는 키를 받지 않는 객체. 모르는 키는 그 이름을 알려 준다. */
-const strict = <Shape extends z.ZodRawShape>(shape: Shape, message: string) =>
-  z.strictObject(shape, {
-    error: (issue) =>
-      issue.code === 'unrecognized_keys'
-        ? `알 수 없는 항목이 있습니다: ${issue.keys.join(', ')}`
-        : message,
-  });
-
 const unique = <T>(items: T[]) => new Set(items).size === items.length;
 
 /** 서울 시각 `HH:mm` */
@@ -70,12 +63,13 @@ const programIdSchema = z
   .min(1, '운영 컨텐츠를 고르세요.')
   .max(64, '운영 컨텐츠를 고르세요.');
 
-/** 정보줄 한 칸. 쓸 수 있는 item은 운영 컨텐츠 종류가 정한다(⑩ 전에는 없다). */
+/** 정보줄 한 칸. 쓸 수 있는 item은 운영 컨텐츠 종류의 infoBarItem이 정한다. */
 const infoBarEntrySchema = strict(
   {
-    item: z
-      .string('정보줄 항목이 올바르지 않습니다.')
-      .regex(/^[A-Z][A-Z0-9_]{0,31}$/, '정보줄 항목이 올바르지 않습니다.'),
+    item: z.enum(
+      INFO_BAR_ITEMS,
+      `정보줄 항목은 ${INFO_BAR_ITEMS.join(', ')} 중 하나여야 합니다.`,
+    ),
     programId: programIdSchema,
   },
   '정보줄 항목이 올바르지 않습니다.',

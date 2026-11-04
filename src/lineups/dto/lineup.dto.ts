@@ -16,7 +16,7 @@ export const SETTINGS_DOC = {
 - posterLayout: 포스터 블록의 화면 방식. WALL 모아 보기, STRIP 흐르는 띠
 - rotationSeconds: 포스터 한 장이 머무는 시간(초, 5~60)
 - refreshAfterSeconds: TV가 편성을 다시 받는 주기(초, 15~300)
-- infoBar: 정보줄 칸 { item, programId } 순서대로, 4칸까지. item마다 쓸 수 있는 운영 컨텐츠 종류가 정해져 있다. 시계와 "다음 장면"은 칸이 아니라 항상 나온다
+- infoBar: 정보줄 칸 { item, programId } 순서대로, 4칸까지. item마다 쓸 수 있는 운영 컨텐츠 종류가 정해져 있다(GET /signage/program-types의 infoBarItem). 시계와 "다음 장면"은 칸이 아니라 항상 나온다
 - quietHours: 화면 끔 시간 { start, end } (서울 HH:mm). end가 start보다 이르면 자정을 넘는다`,
 };
 

@@ -49,7 +49,7 @@ type ProgramReference = {
 /**
  * 그룹 편성 (FE 요청 2-2). 그룹마다 편성이 하나 있고, 기기는 편성 그룹(programGroupId)을 따른다.
  * 운영 컨텐츠 참조는 programs 행을 FOR KEY SHARE로 읽어 확인한다.
- * 운영 컨텐츠 삭제(⑩)는 행을 FOR UPDATE로 잡으므로 확인과 삭제가 엇갈리지 않는다.
+ * 운영 컨텐츠 삭제(ProgramsService.remove)는 행을 FOR UPDATE로 잡으므로 확인과 삭제가 엇갈리지 않는다.
  */
 @Trace()
 @Injectable()

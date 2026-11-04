@@ -66,7 +66,7 @@ export class LineupsController {
 - 블록은 ${MAX_BLOCKS}개까지이고 배열 순서가 재생 순서다. 기존 블록은 \`id\`를 그대로 보내고, 새 블록은 \`id\` 없이 보내면 서버가 \`blk_xxx\`를 발급한다. 보내지 않은 블록은 지워진다.
 - SUBMISSIONS 블록은 \`submissionType\`·\`perVisit\`을, PROGRAM 블록은 \`programId\`를 쓴다. 해당하지 않는 필드는 생략하거나 null로 보낸다. GET 응답을 그대로 고쳐 보내도 된다. 모르는 필드는 422다.
 - 생략하면 기본값: \`perVisit\`은 종류별로 POSTER 3, EVENT_BANNER 1, STORY 2. \`schedule\`은 ALWAYS, \`enabled\`는 true.
-- 정보줄(\`settings.infoBar\`)과 PROGRAM 블록이 가리키는 운영 컨텐츠는 있어야 하고, 정보줄 칸은 그 운영 컨텐츠 종류가 들어갈 수 있는 칸이어야 한다. 운영 컨텐츠가 생기기 전(⑩)에는 정보줄을 비워야 저장된다.`,
+- 정보줄(\`settings.infoBar\`)과 PROGRAM 블록이 가리키는 운영 컨텐츠는 있어야 하고, 정보줄 칸은 그 운영 컨텐츠 종류가 들어갈 수 있는 칸이어야 한다. 칸과 종류는 GET /signage/program-types의 infoBarItem이 정한다(지금은 DDAY 칸에 DDAY 종류).`,
   })
   @ApiParam(ID_PARAM)
   @ApiBody({ schema: openApiOf(lineupInputSchema, 'input') })

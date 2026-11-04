@@ -102,6 +102,7 @@ export class AuditLogDto {
     description: `행위. 신청: SUBMISSION_CREATED, _UPDATED, _RESUBMITTED, _CANCELED, _APPROVED, _REJECTED, _SUSPENDED, _SCHEDULED, _PUBLISHED, _ENDED, STORY_AUTHOR_REVEALED
 기기: DEVICE_REGISTERED, DEVICE_UPDATED, DEVICE_TOKEN_ROTATED
 라이브: LIVE_SET, LIVE_CLEARED (target DEVICE 또는 GROUP)
+운영 컨텐츠: PROGRAM_CREATED, PROGRAM_UPDATED, PROGRAM_DELETED (target PROGRAM)
 위치 그룹: GROUP_CREATED, GROUP_UPDATED, GROUP_DELETED, LINEUP_UPDATED(그룹 편성 저장)
 사용자 역할: USER_ROLE_GRANTED, USER_ROLE_REVOKED (SUPER_ADMIN만 볼 수 있다)
 
@@ -112,6 +113,7 @@ export class AuditLogDto {
 - GROUP_* metadata: _CREATED·_DELETED는 { name }, _UPDATED는 { changes: { name?: { from, to }, isHidden?: { from, to } } }
 - LINEUP_UPDATED metadata: { version, blockCount } (저장 뒤 version)
 - LIVE_SET metadata: { main, alert } (저장한 내용). LIVE_CLEARED는 metadata 없음
+- PROGRAM_CREATED·_DELETED metadata: { type, name }, _UPDATED는 { changedFields } (name·params)
 - USER_ROLE_* metadata: { role } (REVIEWER 또는 SUPER_ADMIN). targetId는 역할이 바뀐 사용자`,
     example: 'SUBMISSION_APPROVED',
   })

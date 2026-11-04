@@ -50,7 +50,8 @@ export class ErrorResponseDto {
 | code | details |
 |---|---|
 | DAILY_LIMIT_EXCEEDED | \`{ type: 신청 종류, limit: 하루 한도 }\` |
-| IN_USE (그룹 삭제) | \`{ deviceIds: 그룹에 속하거나 그룹 편성을 따르는 기기, submissionCount: 그룹을 대상으로 고른 신청 수 }\` |`,
+| IN_USE (그룹 삭제) | \`{ deviceIds: 그룹에 속하거나 그룹 편성을 따르는 기기, submissionCount: 그룹을 대상으로 고른 신청 수 }\` |
+| IN_USE (운영 컨텐츠 삭제) | \`{ usedByGroupIds: 편성 블록이나 그룹 정보줄이 가리키는 그룹, usedByDeviceIds: 기기 예외 정보줄이 가리키는 기기 }\` |`,
     type: 'object',
     additionalProperties: true,
     example: { type: 'EVENT_BANNER', limit: 3 },
