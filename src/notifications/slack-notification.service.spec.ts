@@ -1,6 +1,10 @@
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env.js';
-import { offlineMessage, reviewMessage } from './notification-messages.js';
+import {
+  offlineMessage,
+  recoveredMessage,
+  reviewMessage,
+} from './notification-messages.js';
 import {
   SlackDeliveryError,
   SlackNotificationService,
@@ -25,6 +29,42 @@ it('웹훅이 없으면 비활성화된다', () => {
       'DEVICE_OFFLINE',
     ),
   ).toBe(false);
+});
+
+it('복구 알림도 TV 알림 설정을 따른다', () => {
+  expect(
+    makeService({ ...config, SLACK_DEVICE_ALERTS_ENABLED: false }).enabledFor(
+      'DEVICE_RECOVERED',
+    ),
+  ).toBe(false);
+  expect(
+    makeService({
+      ...config,
+      SLACK_REVIEW_REMINDERS_ENABLED: false,
+    }).enabledFor('DEVICE_RECOVERED'),
+  ).toBe(true);
+});
+
+it('복구는 초록색 카드와 장애 기간, 기기 상태 확인 버튼으로 보낸다', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response('ok'));
+  vi.stubGlobal('fetch', fetchMock);
+  const message = recoveredMessage(
+    { name: '<!channel> TV', location: '로비' },
+    new Date('2026-11-06T01:00:00Z'),
+    new Date('2026-11-06T01:05:00Z'),
+  );
+  await makeService().send(message);
+  const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
+  expect(payload.text).toContain('TV 연결 복구 (Resolved)');
+  expect(payload.text).toContain('장애 감지부터 복구 확인까지: 5분');
+  expect(payload.blocks[0].text.text).toBe('✅ TV 연결 복구');
+  const attachment = payload.attachments[0];
+  expect(attachment.color).toBe('#2EB67D');
+  expect(attachment.blocks[1].fields[0].text).toContain('&lt;!channel&gt; TV');
+  expect(attachment.blocks[3].elements[0]).toMatchObject({
+    url: 'https://flyer-g.gistory.me/tv',
+    text: { text: '기기 상태 확인하기' },
+  });
 });
 
 it('관리자 URL과 plain text로 보내며 사용자 입력을 멘션으로 해석하지 않는다', async () => {

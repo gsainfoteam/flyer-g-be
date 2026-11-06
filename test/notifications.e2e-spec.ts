@@ -136,6 +136,209 @@ describe('슬랙 알림 (e2e)', () => {
     return row;
   }
 
+  async function heartbeatAt(seconds: number) {
+    await db
+      .update(devices)
+      .set({ lastSeenAt: later(seconds) })
+      .where(eq(devices.id, deviceId));
+  }
+
+  const sentKinds = () =>
+    slack.send.mock.calls.map(([message]) => message.kind);
+
+  it('장애 전송 후 재접속은 한 번만 알리고 재시작·동시 점검에도 반복하지 않는다', async () => {
+    await deviceJob.run(now);
+    await dispatcher.run(now);
+    await heartbeatAt(30);
+    await Promise.all([deviceJob.run(later(60)), deviceJob.run(later(60))]);
+    const restarted = new DeviceOfflineAlertJob(
+      db,
+      slack as unknown as SlackNotificationService,
+    );
+    await restarted.run(later(61));
+    const recovery = (await notifications()).filter(
+      (row) => row.kind === 'DEVICE_RECOVERED',
+    );
+    expect(recovery).toHaveLength(1);
+    expect(recovery[0].text).toContain('장애 감지부터 복구 확인까지: 1분');
+    await dispatcher.run(later(65));
+    await heartbeatAt(90);
+    await restarted.run(later(120));
+    await dispatcher.run(later(125));
+    expect(sentKinds()).toEqual(['DEVICE_OFFLINE', 'DEVICE_RECOVERED']);
+    expect(
+      (await notifications()).find((row) => row.kind === 'DEVICE_RECOVERED')
+        ?.status,
+    ).toBe('SENT');
+  });
+
+  it('장애 알림 전 복구되면 장애·복구 메시지를 모두 보내지 않는다', async () => {
+    await deviceJob.run(now);
+    await heartbeatAt(30);
+    await deviceJob.run(later(60));
+    await dispatcher.run(later(60));
+    await dispatcher.run(later(65));
+    expect(slack.send).not.toHaveBeenCalled();
+    expect((await notifications()).map((row) => row.status)).toEqual([
+      'CANCELED',
+      'CANCELED',
+    ]);
+  });
+
+  it('최초 접속과 단순 휴면은 복구 알림이 아니며 휴면 중 실제 재접속은 알린다', async () => {
+    await heartbeatAt(0);
+    await deviceJob.run(now);
+    expect(await notifications()).toHaveLength(0);
+    await deviceJob.run(later(120));
+    await dispatcher.run(later(120));
+    await db
+      .update(devices)
+      .set({
+        lineupOverrides: {
+          settings: { quietHours: [{ start: '09:00', end: '11:00' }] },
+          blocks: {},
+        },
+      })
+      .where(eq(devices.id, deviceId));
+    await deviceJob.run(later(180));
+    expect(await notifications()).toHaveLength(1);
+    await heartbeatAt(190);
+    await deviceJob.run(later(210));
+    await dispatcher.run(later(210));
+    expect(sentKinds()).toEqual(['DEVICE_OFFLINE', 'DEVICE_RECOVERED']);
+  });
+
+  it('장애 전송 중의 재접속도 놓치지 않고 성공 결과 뒤에 복구를 보낸다', async () => {
+    await deviceJob.run(now);
+    let finish!: () => void;
+    let started!: () => void;
+    const sending = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    slack.send.mockImplementationOnce(async () => {
+      started();
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    });
+    const inFlight = dispatcher.run(now);
+    await sending;
+    try {
+      await heartbeatAt(30);
+      await deviceJob.run(later(40));
+      expect(
+        (await notifications()).find((row) => row.kind === 'DEVICE_RECOVERED')
+          ?.status,
+      ).toBe('PENDING');
+      expect(await dispatcher.run(later(45))).toBeNull();
+    } finally {
+      finish();
+      await inFlight;
+    }
+    await dispatcher.run(later(50));
+    expect(sentKinds()).toEqual(['DEVICE_OFFLINE', 'DEVICE_RECOVERED']);
+  });
+
+  it('장애 재시도 대기 중인 복구는 시도 횟수를 쓰지 않으며 다른 알림도 막지 않는다', async () => {
+    await deviceJob.run(now);
+    slack.send.mockRejectedValueOnce(
+      new SlackDeliveryError('SLACK_NETWORK_ERROR', true),
+    );
+    await dispatcher.run(now);
+    await heartbeatAt(30);
+    await deviceJob.run(later(40));
+    const unrelated = await enqueue();
+    await dispatcher.run(later(45));
+    expect(
+      (await notifications()).find((row) => row.kind === 'DEVICE_RECOVERED')
+        ?.attempts,
+    ).toBe(0);
+    expect(
+      (
+        await db
+          .select()
+          .from(slackNotifications)
+          .where(eq(slackNotifications.id, unrelated.id))
+      )[0].status,
+    ).toBe('SENT');
+    await dispatcher.run(later(65));
+    await dispatcher.run(later(70));
+    expect(sentKinds()).toEqual(['DEVICE_OFFLINE', 'REVIEW_REMINDER']);
+    expect(
+      (await notifications()).every((row) => row.status === 'CANCELED'),
+    ).toBe(true);
+  });
+
+  it('장애 알림 전송이 영구 실패했다면 복구만 보내지 않는다', async () => {
+    await deviceJob.run(now);
+    slack.send.mockRejectedValueOnce(
+      new SlackDeliveryError('SLACK_HTTP_403', false),
+    );
+    await dispatcher.run(now);
+    await heartbeatAt(30);
+    await deviceJob.run(later(60));
+    await dispatcher.run(later(65));
+    expect(await notifications()).toHaveLength(1);
+    expect(sentKinds()).toEqual(['DEVICE_OFFLINE']);
+  });
+
+  it('새 장애와 복구가 지나간 뒤에는 옛 복구 알림을 뒤늦게 보내지 않는다', async () => {
+    await deviceJob.run(now);
+    await dispatcher.run(now);
+    await heartbeatAt(30);
+    await deviceJob.run(later(60));
+    const recovery = (await notifications()).find(
+      (row) => row.kind === 'DEVICE_RECOVERED',
+    )!;
+    await db
+      .update(slackNotifications)
+      .set({ availableAt: later(600) })
+      .where(eq(slackNotifications.id, recovery.id));
+    await deviceJob.run(later(180));
+    await dispatcher.run(later(180));
+    await heartbeatAt(200);
+    await deviceJob.run(later(210));
+    await dispatcher.run(later(210));
+    await heartbeatAt(590);
+    await deviceJob.run(later(600));
+    await dispatcher.run(later(600));
+    expect(sentKinds()).toEqual([
+      'DEVICE_OFFLINE',
+      'DEVICE_OFFLINE',
+      'DEVICE_RECOVERED',
+    ]);
+    expect(
+      (await notifications()).find((row) => row.id === recovery.id)?.status,
+    ).toBe('CANCELED');
+  });
+
+  it('복구 전송 실패도 재시도하며 발송 서비스 재생성 후 성공하면 종료한다', async () => {
+    await deviceJob.run(now);
+    await dispatcher.run(now);
+    await heartbeatAt(30);
+    await deviceJob.run(later(60));
+    slack.send.mockRejectedValueOnce(
+      new SlackDeliveryError('SLACK_NETWORK_ERROR', true),
+    );
+    await dispatcher.run(later(60));
+    await heartbeatAt(120);
+    const restarted = new NotificationDispatcher(
+      db,
+      slack as unknown as SlackNotificationService,
+    );
+    await restarted.run(later(125));
+    await restarted.run(later(130));
+    const recovery = (await notifications()).find(
+      (row) => row.kind === 'DEVICE_RECOVERED',
+    );
+    expect(recovery).toMatchObject({ status: 'SENT', attempts: 2 });
+    expect(sentKinds()).toEqual([
+      'DEVICE_OFFLINE',
+      'DEVICE_RECOVERED',
+      'DEVICE_RECOVERED',
+    ]);
+  });
+
   it('동시 감지와 서비스 재생성에도 같은 장애는 한 번만 생성한다', async () => {
     await Promise.all([deviceJob.run(now), deviceJob.run(now)]);
     expect(await notifications()).toHaveLength(1);

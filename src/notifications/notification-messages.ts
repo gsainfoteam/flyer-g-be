@@ -44,6 +44,41 @@ export function offlineMessage(
   };
 }
 
+export function recoveredMessage(
+  device: Pick<Device, 'name' | 'location'>,
+  detectedAt: Date,
+  now: Date,
+): NotificationMessage {
+  const elapsed = Math.max(
+    0,
+    Math.floor((now.getTime() - detectedAt.getTime()) / 1000),
+  );
+  return {
+    kind: 'DEVICE_RECOVERED',
+    text: [
+      'TV 연결 복구 (Resolved)',
+      `기기: ${device.name}`,
+      `위치: ${device.location ?? '미지정'}`,
+      `장애 감지: ${koreanTime(detectedAt)} (한국 시간)`,
+      `복구 확인: ${koreanTime(now)} (한국 시간)`,
+      `장애 감지부터 복구 확인까지: ${elapsedLabel(elapsed)}`,
+    ].join('\n'),
+    presentation: {
+      title: '✅ TV 연결 복구',
+      color: '#2EB67D',
+      summary:
+        '*TV가 다시 연결됐어요.*\n새 heartbeat가 수신되어 연결 복구를 확인했어요.',
+      fields: [
+        { label: '기기', value: device.name },
+        { label: '위치', value: device.location ?? '미지정' },
+        { label: '장애 감지부터 복구 확인까지', value: elapsedLabel(elapsed) },
+        { label: '연결 상태', value: '복구 완료 (Resolved)' },
+      ],
+      context: `Flyer-G · ${koreanTime(now)} 복구 확인 · 한국 시간`,
+    },
+  };
+}
+
 export function reviewMessage(
   rows: Awaited<ReturnType<typeof pendingReviewSummary>>,
   now: Date,

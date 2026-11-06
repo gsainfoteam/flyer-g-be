@@ -11,7 +11,10 @@ import {
 import { DEFAULT_LINEUP_SETTINGS } from '../lineups/lineup-schema.js';
 import { resolveSettings } from '../lineups/resolve-lineup.js';
 import { evaluateDeviceAlert } from '../notifications/device-alert-policy.js';
-import { offlineMessage } from '../notifications/notification-messages.js';
+import {
+  offlineMessage,
+  recoveredMessage,
+} from '../notifications/notification-messages.js';
 import { SlackNotificationService } from '../notifications/slack-notification.service.js';
 import { JobLock, withJobLock } from './job-lock.js';
 
@@ -51,6 +54,38 @@ export class DeviceOfflineAlertJob {
           previous ?? undefined,
           now,
         );
+        if (result.recoveredIncidentId) {
+          const incidentId = result.recoveredIncidentId;
+          const [offline] = await tx
+            .select()
+            .from(slackNotifications)
+            .where(
+              eq(
+                slackNotifications.dedupeKey,
+                `device:${device.id}:${incidentId}`,
+              ),
+            );
+          // 전송 중인 장애는 결과 확정 후 발송 단계에서 판정한다. 상태 초기화와 함께 기록해 복구를 잃지 않는다.
+          if (
+            offline &&
+            ['SENT', 'SENDING', 'PENDING'].includes(offline.status)
+          ) {
+            const inserted = await tx
+              .insert(slackNotifications)
+              .values({
+                dedupeKey: `device-recovered:${device.id}:${incidentId}`,
+                deviceId: device.id,
+                incidentId,
+                ...recoveredMessage(device, offline.createdAt, now),
+                availableAt: now,
+                expiresAt: new Date(now.getTime() + 3600_000),
+                createdAt: now,
+              })
+              .onConflictDoNothing({ target: slackNotifications.dedupeKey })
+              .returning({ id: slackNotifications.id });
+            queued += inserted.length;
+          }
+        }
         if (result.shouldAlert) {
           const incidentId = randomUUID();
           result.state.incidentId = incidentId;

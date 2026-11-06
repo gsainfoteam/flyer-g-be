@@ -155,4 +155,63 @@ describe('TV 장애 판정', () => {
       ).shouldAlert,
     ).toBe(false);
   });
+
+  it('알려진 장애에서 새 heartbeat를 받으면 복구 회차를 한 번만 반환한다', () => {
+    const incidentId = randomUUID();
+    const previous = {
+      ...evaluateDeviceAlert(device, settings, undefined, ago(60)).state,
+      incidentId,
+    };
+    const connected = { ...device, lastSeenAt: now };
+    const result = evaluateDeviceAlert(connected, settings, previous, now);
+    expect(result.recoveredIncidentId).toBe(incidentId);
+    expect(result.state.incidentId).toBeNull();
+    expect(
+      evaluateDeviceAlert(connected, settings, result.state, now)
+        .recoveredIncidentId,
+    ).toBeNull();
+    expect(
+      evaluateDeviceAlert(connected, settings, undefined, now)
+        .recoveredIncidentId,
+    ).toBeNull();
+  });
+
+  it('단순 휴면 전환·비활성화·이미 다시 끊긴 heartbeat는 복구로 알리지 않는다', () => {
+    const previous = {
+      ...evaluateDeviceAlert(device, settings, undefined, ago(60)).state,
+      incidentId: randomUUID(),
+    };
+    const sleeping = {
+      ...settings,
+      quietHours: [{ start: '09:00', end: '11:00' }],
+    };
+    expect(
+      evaluateDeviceAlert(device, sleeping, previous, now).recoveredIncidentId,
+    ).toBeNull();
+    expect(
+      evaluateDeviceAlert(
+        { ...device, isActive: false, lastSeenAt: now },
+        settings,
+        previous,
+        now,
+      ).recoveredIncidentId,
+    ).toBeNull();
+    expect(
+      evaluateDeviceAlert(
+        { ...device, lastSeenAt: ago(30) },
+        settings,
+        previous,
+        new Date(now.getTime() + 180_000),
+      ).recoveredIncidentId,
+    ).toBeNull();
+    // 화면 끔 시간에도 실제로 새 heartbeat가 도착하면 연결 복구를 확인할 수 있다.
+    expect(
+      evaluateDeviceAlert(
+        { ...device, lastSeenAt: now },
+        sleeping,
+        previous,
+        now,
+      ).recoveredIncidentId,
+    ).toBe(previous.incidentId);
+  });
 });
