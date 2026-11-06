@@ -9,6 +9,8 @@ export const JobLock = {
   ASSET_CLEANUP: 2,
   IDEMPOTENCY_CLEANUP: 3,
   PLAY_EVENT_AGGREGATION: 4,
+  DEVICE_OFFLINE_ALERT: 5,
+  REVIEW_REMINDER: 6,
 } as const;
 
 /**

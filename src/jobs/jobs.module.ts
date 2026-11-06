@@ -8,11 +8,15 @@ import { StorageModule } from '../storage/storage.module.js';
 import { AssetCleanupJob } from './asset-cleanup.job.js';
 import { PlayEventAggregationJob } from './play-event-aggregation.job.js';
 import { SchedulerService } from './scheduler.service.js';
+import { NotificationsModule } from '../notifications/notifications.module.js';
+import { DeviceOfflineAlertJob } from './device-offline-alert.job.js';
+import { ReviewReminderJob } from './review-reminder.job.js';
 import { SubmissionStatusJob } from './submission-status.job.js';
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
+    NotificationsModule,
     AssetsModule,
     AuditModule,
     CommonModule,
@@ -20,12 +24,16 @@ import { SubmissionStatusJob } from './submission-status.job.js';
     StorageModule,
   ],
   providers: [
+    DeviceOfflineAlertJob,
+    ReviewReminderJob,
     SubmissionStatusJob,
     AssetCleanupJob,
     PlayEventAggregationJob,
     SchedulerService,
   ],
   exports: [
+    DeviceOfflineAlertJob,
+    ReviewReminderJob,
     SubmissionStatusJob,
     AssetCleanupJob,
     PlayEventAggregationJob,

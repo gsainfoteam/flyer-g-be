@@ -1,3 +1,4 @@
+import { pendingReviewSummary, waitingSince } from './review-summary.js';
 import { Trace } from '@gsainfoteam/nest-observability';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
@@ -98,9 +99,6 @@ const ACTIVE_NOTICE_INDEX = 'submissions_ziggle_notice_id_active_uq';
 const DAILY_LIMIT_LOCK_NAMESPACE = 1179207271;
 
 const cursorSchema = z.tuple([z.iso.datetime(), z.uuid()]);
-
-/** 검토 대기열 정렬 기준. 모든 신청은 만들 때 submittedAt이 채워지지만 안전하게 createdAt으로 보완한다. */
-const waitingSince = sql<Date>`coalesce(${submissions.submittedAt}, ${submissions.createdAt})`;
 
 /** 가장 최근 검토 결정. 검토 대기 목록에서 처음 낸 신청과 다시 낸 신청을 가르는 데 쓴다. */
 const lastDecision = sql<ReviewDecision | null>`(
@@ -313,17 +311,7 @@ export class SubmissionsService {
         })
         .from(submissions)
         .where(filter),
-      this.db
-        .select({
-          type: submissions.type,
-          pendingReview: count(),
-          oldestSubmittedAt: sql<Date>`min(${waitingSince})`.mapWith(
-            submissions.submittedAt,
-          ),
-        })
-        .from(submissions)
-        .where(and(filter, eq(status, 'PENDING_REVIEW')))
-        .groupBy(submissions.type),
+      pendingReviewSummary(this.db, filter),
     ]);
 
     const byType = Object.fromEntries(
