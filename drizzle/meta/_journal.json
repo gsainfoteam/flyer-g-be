@@ -169,6 +169,13 @@
       "when": 1793811622867,
       "tag": "0023_game",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793946502536,
+      "tag": "0024_slack_notifications",
+      "breakpoints": true
     }
   ]
 }

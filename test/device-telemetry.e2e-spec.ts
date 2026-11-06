@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { eq, inArray } from 'drizzle-orm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
+import type { PlayEventDto } from '../src/device-telemetry/dto/play-events.dto.js';
 import { DB_CONNECTION, type Database } from '../src/db/index.js';
 import {
   auditLogs,
@@ -81,7 +82,7 @@ describe('기기 런타임 (e2e)', () => {
       .set('Authorization', admin.authHeader)
       .expect(200);
 
-  const event = (overrides: object = {}) => ({
+  const event = (overrides: Partial<PlayEventDto> = {}): PlayEventDto => ({
     eventId: randomUUID(),
     sessionId: 'ses_e2e',
     submissionId: randomUUID(),
@@ -330,9 +331,9 @@ describe('기기 런타임 (e2e)', () => {
         ),
       );
 
-      const res = await sendEvents(tv, [event({ placement: 'GRID' })]).expect(
-        422,
-      );
+      const res = await sendEvents(tv, [
+        { ...event(), placement: 'GRID' },
+      ]).expect(422);
       expect(Object.keys(res.body.fields)).toEqual(['events.0.placement']);
     });
 

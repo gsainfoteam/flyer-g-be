@@ -10,6 +10,9 @@ import { AssetCleanupJob } from './asset-cleanup.job.js';
 import { JobLock, withJobLock } from './job-lock.js';
 import { PlayEventAggregationJob } from './play-event-aggregation.job.js';
 import { SubmissionStatusJob } from './submission-status.job.js';
+import { DeviceOfflineAlertJob } from './device-offline-alert.job.js';
+import { ReviewReminderJob } from './review-reminder.job.js';
+import { NotificationDispatcher } from '../notifications/notification-dispatcher.service.js';
 
 /**
  * 주기 작업의 시간표. 작업 내용은 각 Job 클래스에 있고, 여기서는 켜져 있는지 확인하고 부르기만 한다.
@@ -29,6 +32,9 @@ export class SchedulerService {
     private readonly playEventAggregationJob: PlayEventAggregationJob,
     private readonly idempotencyService: IdempotencyService,
     private readonly videoProcessing: VideoProcessingService,
+    private readonly deviceOfflineAlert: DeviceOfflineAlertJob,
+    private readonly reviewReminder: ReviewReminderJob,
+    private readonly notificationDispatcher: NotificationDispatcher,
   ) {
     this.enabled = config.get('SCHEDULER_ENABLED', { infer: true });
   }
@@ -37,6 +43,31 @@ export class SchedulerService {
   async syncSubmissionStatus(): Promise<void> {
     await this.runJob('submission-status', () =>
       this.submissionStatusJob.run(),
+    );
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE, { name: 'device-offline-alert' })
+  async detectOfflineDevices(): Promise<void> {
+    await this.runJob('device-offline-alert', () =>
+      this.deviceOfflineAlert.run(),
+    );
+  }
+
+  @Cron('0 0 10,16 * * 1-5', {
+    name: 'review-reminder',
+    timeZone: 'Asia/Seoul',
+  })
+  async remindPendingReviews(): Promise<void> {
+    await this.runJob('review-reminder', () => this.reviewReminder.run());
+  }
+
+  @Cron(CronExpression.EVERY_5_SECONDS, {
+    name: 'slack-notifications',
+    waitForCompletion: true,
+  })
+  async dispatchNotifications(): Promise<void> {
+    await this.runJob('slack-notifications', () =>
+      this.notificationDispatcher.run(),
     );
   }
 

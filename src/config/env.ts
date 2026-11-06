@@ -92,6 +92,36 @@ const envSchema = z
       .default('true')
       .transform((v) => v === 'true'),
 
+    // 비우면 슬랙 알림 생성·발송을 모두 끈다. 웹훅 URL은 시크릿으로 관리한다.
+    SLACK_WEBHOOK_URL: z.preprocess(
+      unsetIfEmpty,
+      z
+        .url()
+        .refine((value) => {
+          const url = URL.parse(value);
+          return (
+            url !== null &&
+            url.protocol === 'https:' &&
+            ['hooks.slack.com', 'hooks.slack-gov.com'].includes(url.hostname) &&
+            url.pathname.startsWith('/services/') &&
+            !url.username &&
+            !url.password &&
+            !url.search &&
+            !url.hash &&
+            !url.port
+          );
+        }, 'Slack Incoming Webhook HTTPS URL이어야 합니다')
+        .optional(),
+    ),
+    SLACK_DEVICE_ALERTS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
+    SLACK_REVIEW_REMINDERS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
+
     // 영상 업로드를 받을지. TV 플레이어가 영상을 재생할 수 있게 된 환경부터 켠다.
     // 꺼져 있어도 이미 올라온 영상의 처리와 편성은 그대로 한다. 영상 변환에는 ffmpeg·ffprobe가 PATH에 있어야 한다.
     VIDEO_UPLOADS_ENABLED: z

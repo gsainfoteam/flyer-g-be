@@ -17,7 +17,7 @@ import {
   effectiveSettings,
   LineupsService,
 } from '../lineups/lineups.service.js';
-import { isQuietAt } from '../lineups/quiet-hours.js';
+import { deviceStatusOf } from './device-status.js';
 import type { LiveDto } from '../live/dto/live.dto.js';
 import { liveDtoOf, LiveService } from '../live/live.service.js';
 import { DeviceControlService } from '../realtime/device-control.service.js';
@@ -33,12 +33,8 @@ import type {
   DeviceListDto,
   DeviceReloadDto,
   DeviceSessionDto,
-  DeviceStatus,
   DeviceWithTokenDto,
 } from './dto/device.dto.js';
-
-// heartbeat는 30초마다 온다. 세 번 연속 빠지면 꺼진 것으로 본다.
-const ONLINE_WITHIN_MS = 90 * 1000;
 
 @Trace()
 @Injectable()
@@ -308,24 +304,6 @@ export class DevicesService {
   }
 }
 
-/** 화면 끔 시간에는 heartbeat가 없어도 꺼진 것(OFFLINE)으로 보지 않는다 */
-function statusOf(
-  device: Device,
-  settings: LineupSettings,
-  now: Date,
-): DeviceStatus {
-  if (!device.isActive) {
-    return 'DISABLED';
-  }
-  if (isQuietAt(settings.quietHours, now)) {
-    return 'SLEEPING';
-  }
-  return device.lastSeenAt &&
-    now.getTime() - device.lastSeenAt.getTime() <= ONLINE_WITHIN_MS
-    ? 'ONLINE'
-    : 'OFFLINE';
-}
-
 /** 편성 그룹은 기기 그룹 중 하나여야 한다(FE 요청 2-1). */
 function assertProgramGroupIn(
   programGroupId: string,
@@ -372,7 +350,7 @@ function toDto(
     lastRenderOkAt: device.lastRenderOkAt?.toISOString() ?? null,
     now: device.nowPlaying,
     live,
-    status: statusOf(device, settings, now),
+    status: deviceStatusOf(device, settings, now),
     controlConnected,
     layout: {
       type: settings.posterLayout,

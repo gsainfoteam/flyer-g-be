@@ -19,6 +19,41 @@ const base = {
   AWS_SECRET_ACCESS_KEY: fakeSecret(),
 };
 
+describe('validateEnv — 슬랙 알림', () => {
+  const webhook = 'https://hooks.slack.com/services/test';
+  it('빈 설정은 알림 없이 기존 환경에서 동작한다', () => {
+    expect(
+      validateEnv({ ...base, SLACK_WEBHOOK_URL: '' }).SLACK_WEBHOOK_URL,
+    ).toBeUndefined();
+  });
+  it('웹훅만 설정해도 알림을 사용할 수 있다', () => {
+    expect(
+      validateEnv({ ...base, SLACK_WEBHOOK_URL: webhook }).SLACK_WEBHOOK_URL,
+    ).toBe(webhook);
+  });
+  it.each([
+    'http://hooks.slack.com/services/test',
+    'https://example.com/services/test',
+    'invalid-url',
+  ])('잘못된 웹훅 %s를 거절한다', (value) => {
+    expect(() =>
+      validateEnv({
+        ...base,
+        SLACK_WEBHOOK_URL: value,
+      }),
+    ).toThrow();
+  });
+  it('기능별로 끌 수 있다', () => {
+    const env = validateEnv({
+      ...base,
+      SLACK_DEVICE_ALERTS_ENABLED: 'false',
+      SLACK_REVIEW_REMINDERS_ENABLED: 'false',
+    });
+    expect(env.SLACK_DEVICE_ALERTS_ENABLED).toBe(false);
+    expect(env.SLACK_REVIEW_REMINDERS_ENABLED).toBe(false);
+  });
+});
+
 describe('validateEnv — Swagger 잠금', () => {
   it('둘 다 없으면 잠그지 않는다', () => {
     const env = validateEnv(base);

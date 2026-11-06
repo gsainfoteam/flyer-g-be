@@ -8,6 +8,7 @@
 
 import { sql } from 'drizzle-orm';
 import type { NowPlaying } from '../devices/dto/now-playing.dto.js';
+import type { NotificationPresentation } from '../notifications/notification-presentation.js';
 import type { LiveAlert, LiveMain } from '../live/live-schema.js';
 import type {
   BlockSchedule,
@@ -833,3 +834,62 @@ export const idempotencyKeys = pgTable(
 
 export type User = typeof users.$inferSelect;
 export type GrantedRole = (typeof grantedRoleEnum.enumValues)[number];
+
+/** 마지막 감지 상태. 재시작해도 같은 장애를 다시 만들지 않는다. */
+export const deviceAlertStates = pgTable('device_alert_states', {
+  deviceId: uuid('device_id')
+    .primaryKey()
+    .references(() => devices.id, { onDelete: 'cascade' }),
+  status: varchar('status', { length: 16 })
+    .$type<'ONLINE' | 'OFFLINE' | 'SLEEPING' | 'DISABLED'>()
+    .notNull(),
+  observedLastSeenAt: timestamp('observed_last_seen_at', {
+    withTimezone: true,
+  }),
+  graceUntil: timestamp('grace_until', { withTimezone: true }).notNull(),
+  incidentId: uuid('incident_id'),
+  checkedAt: timestamp('checked_at', { withTimezone: true }).notNull(),
+});
+
+/** 외부 전송은 커밋 후 수행한다. dedupeKey는 장애 회차 또는 리마인드 예정 시각이다. */
+export const slackNotifications = pgTable(
+  'slack_notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    dedupeKey: varchar('dedupe_key', { length: 160 }).notNull().unique(),
+    kind: varchar('kind', { length: 32 })
+      .$type<'DEVICE_OFFLINE' | 'REVIEW_REMINDER'>()
+      .notNull(),
+    deviceId: uuid('device_id').references(() => devices.id, {
+      onDelete: 'cascade',
+    }),
+    incidentId: uuid('incident_id'),
+    text: varchar('text', { length: 3000 }).notNull(),
+    presentation: jsonb('presentation').$type<NotificationPresentation>(),
+    status: varchar('status', { length: 16 })
+      .$type<'PENDING' | 'SENDING' | 'SENT' | 'FAILED' | 'CANCELED'>()
+      .notNull()
+      .default('PENDING'),
+    attempts: integer('attempts').notNull().default(0),
+    availableAt: timestamp('available_at', { withTimezone: true }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    claimToken: uuid('claim_token'),
+    lastError: varchar('last_error', { length: 128 }),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index('slack_notifications_pending_idx').on(
+      table.status,
+      table.availableAt,
+    ),
+  ],
+);
+
+/** 웹훅 전체의 발송 리스와 속도 제한. 네트워크 대기 중에는 DB 잠금을 유지하지 않는다. */
+export const slackDeliveryState = pgTable('slack_delivery_state', {
+  id: varchar('id', { length: 16 }).primaryKey(),
+  claimToken: uuid('claim_token'),
+  lockedUntil: timestamp('locked_until', { withTimezone: true }).notNull(),
+  nextSendAt: timestamp('next_send_at', { withTimezone: true }).notNull(),
+});
