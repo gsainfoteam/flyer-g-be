@@ -25,13 +25,13 @@ export class SlackNotificationService {
     return !!this.config.get('SLACK_WEBHOOK_URL', { infer: true });
   }
 
-  enabledFor(kind: 'DEVICE_OFFLINE' | 'REVIEW_REMINDER'): boolean {
+  enabledFor(kind: NotificationMessage['kind']): boolean {
     return (
       this.enabled &&
       this.config.get(
-        kind === 'DEVICE_OFFLINE'
-          ? 'SLACK_DEVICE_ALERTS_ENABLED'
-          : 'SLACK_REVIEW_REMINDERS_ENABLED',
+        kind === 'REVIEW_REMINDER'
+          ? 'SLACK_REVIEW_REMINDERS_ENABLED'
+          : 'SLACK_DEVICE_ALERTS_ENABLED',
         { infer: true },
       )
     );

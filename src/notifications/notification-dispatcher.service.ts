@@ -1,6 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, asc, eq, inArray, lte } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  lte,
+  ne,
+  notExists,
+  or,
+  sql,
+} from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { DB_CONNECTION, type Database } from '../db/index.js';
 import {
   deviceAlertStates,
@@ -9,7 +21,10 @@ import {
   slackDeliveryState,
   slackNotifications,
 } from '../db/schema.js';
-import { deviceStatusOf } from '../devices/device-status.js';
+import {
+  deviceStatusOf,
+  hasRecentHeartbeat,
+} from '../devices/device-status.js';
 import { DEFAULT_LINEUP_SETTINGS } from '../lineups/lineup-schema.js';
 import { resolveSettings } from '../lineups/resolve-lineup.js';
 import {
@@ -145,6 +160,19 @@ export class NotificationDispatcher {
             lte(slackNotifications.expiresAt, now),
           ),
         );
+      const offline = alias(slackNotifications, 'offline_notification');
+      const unsettledOffline = tx
+        .select({ id: offline.id })
+        .from(offline)
+        .where(
+          and(
+            eq(
+              offline.dedupeKey,
+              sql`concat('device:', ${slackNotifications.deviceId}::text, ':', ${slackNotifications.incidentId}::text)`,
+            ),
+            inArray(offline.status, ['PENDING', 'SENDING']),
+          ),
+        );
       const [row] = await tx
         .select()
         .from(slackNotifications)
@@ -152,6 +180,11 @@ export class NotificationDispatcher {
           and(
             inArray(slackNotifications.status, ['PENDING', 'SENDING']),
             lte(slackNotifications.availableAt, now),
+            // 장애 발송이 끝나기 전에는 복구를 가져가지 않는다. 다른 알림은 계속 처리한다.
+            or(
+              ne(slackNotifications.kind, 'DEVICE_RECOVERED'),
+              notExists(unsettledOffline),
+            ),
           ),
         )
         .orderBy(asc(slackNotifications.createdAt), asc(slackNotifications.id))
@@ -190,7 +223,7 @@ export class NotificationDispatcher {
     now: Date,
   ): Promise<boolean> {
     if (!this.slack.enabledFor(notification.kind)) return false;
-    if (notification.kind !== 'DEVICE_OFFLINE') return true;
+    if (notification.kind === 'REVIEW_REMINDER') return true;
     const [row] = await this.db
       .select({
         device: devices,
@@ -201,6 +234,37 @@ export class NotificationDispatcher {
       .innerJoin(deviceAlertStates, eq(deviceAlertStates.deviceId, devices.id))
       .leftJoin(groupLineups, eq(groupLineups.groupId, devices.programGroupId))
       .where(eq(devices.id, notification.deviceId!));
+    if (notification.kind === 'DEVICE_RECOVERED') {
+      if (
+        !row ||
+        !row.device.isActive ||
+        row.state.incidentId ||
+        !hasRecentHeartbeat(row.device, now)
+      )
+        return false;
+      // 이후 새 장애가 있었다면 옛 복구를 뒤늦게 보내지 않는다. 장애 알림이 실제로 성공한 경우만 보낸다.
+      const [latestOffline] = await this.db
+        .select({
+          incidentId: slackNotifications.incidentId,
+          status: slackNotifications.status,
+        })
+        .from(slackNotifications)
+        .where(
+          and(
+            eq(slackNotifications.deviceId, notification.deviceId!),
+            eq(slackNotifications.kind, 'DEVICE_OFFLINE'),
+          ),
+        )
+        .orderBy(
+          desc(slackNotifications.createdAt),
+          desc(slackNotifications.id),
+        )
+        .limit(1);
+      return (
+        latestOffline?.incidentId === notification.incidentId &&
+        latestOffline.status === 'SENT'
+      );
+    }
     return (
       !!row &&
       row.state.incidentId === notification.incidentId &&

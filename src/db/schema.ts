@@ -8,7 +8,10 @@
 
 import { sql } from 'drizzle-orm';
 import type { NowPlaying } from '../devices/dto/now-playing.dto.js';
-import type { NotificationPresentation } from '../notifications/notification-presentation.js';
+import type {
+  NotificationMessage,
+  NotificationPresentation,
+} from '../notifications/notification-presentation.js';
 import type { LiveAlert, LiveMain } from '../live/live-schema.js';
 import type {
   BlockSchedule,
@@ -858,7 +861,7 @@ export const slackNotifications = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     dedupeKey: varchar('dedupe_key', { length: 160 }).notNull().unique(),
     kind: varchar('kind', { length: 32 })
-      .$type<'DEVICE_OFFLINE' | 'REVIEW_REMINDER'>()
+      .$type<NotificationMessage['kind']>()
       .notNull(),
     deviceId: uuid('device_id').references(() => devices.id, {
       onDelete: 'cascade',

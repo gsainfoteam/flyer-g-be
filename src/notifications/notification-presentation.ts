@@ -13,6 +13,10 @@ const NOTIFICATION_ACTIONS = {
     label: '기기 상태 확인하기',
     url: 'https://flyer-g.gistory.me/tv',
   },
+  DEVICE_RECOVERED: {
+    label: '기기 상태 확인하기',
+    url: 'https://flyer-g.gistory.me/tv',
+  },
   REVIEW_REMINDER: {
     label: '승인 요청 확인하기',
     url: 'https://flyer-g.gistory.me/review',

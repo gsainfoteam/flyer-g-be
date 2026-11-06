@@ -1,5 +1,9 @@
 import type { Device, deviceAlertStates } from '../db/schema.js';
-import { deviceStatusOf, ONLINE_WITHIN_MS } from '../devices/device-status.js';
+import {
+  deviceStatusOf,
+  hasRecentHeartbeat,
+  ONLINE_WITHIN_MS,
+} from '../devices/device-status.js';
 import type { LineupSettings } from '../lineups/lineup-schema.js';
 import { isQuietAt } from '../lineups/quiet-hours.js';
 
@@ -19,7 +23,11 @@ export function evaluateDeviceAlert(
   settings: LineupSettings,
   previous: AlertState | undefined,
   now: Date,
-): { state: AlertState; shouldAlert: boolean } {
+): {
+  state: AlertState;
+  shouldAlert: boolean;
+  recoveredIncidentId: string | null;
+} {
   const status = deviceStatusOf(device, settings, now);
   // 폴링 사이 잠깐 복구했다 다시 끊긴 경우도 새 heartbeat로 구분한다.
   const recovered =
@@ -43,6 +51,11 @@ export function evaluateDeviceAlert(
   }
 
   return {
+    // 새 heartbeat로 연결이 확인되어야 한다. SLEEPING 상태 전환만으로는 복구가 아니다.
+    recoveredIncidentId:
+      recovered && device.isActive && hasRecentHeartbeat(device, now)
+        ? (previous?.incidentId ?? null)
+        : null,
     state: {
       deviceId: device.id,
       status,
