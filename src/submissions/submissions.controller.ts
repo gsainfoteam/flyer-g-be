@@ -88,7 +88,7 @@ export class SubmissionsController {
 **POSTER** (\`type\`을 비우면 포스터)
 - 제목: 앞뒤 공백 제거 후 1~80자
 - 포스터: 본인이 올려 complete까지 끝낸 asset
-- 기간: 최대 3개월(서울 달력)
+- 기간: 시작 시각부터 최대 30일(1일 = 24시간)
 - 상세 링크(선택): 허용된 호스트의 HTTPS. Ziggle 공지 주소(\`/notice/{id}\`)면 공지 ID를 뽑아 **공지 하나에 신청 하나**를 지킨다. 끝난 신청(취소·종료·보관)은 세지 않는다
 
 **EVENT_BANNER** (\`eventBanner\`만 받는다. 제목은 서버가 "생일 · 지민에게"처럼 만든다)

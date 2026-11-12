@@ -48,11 +48,16 @@ describe('POSTER_KIND.schedule', () => {
     });
   });
 
-  it('최대 게시 기간(3개월, 서울 달력)을 넘으면 endAt 오류', () => {
-    const start = kst('2026-11-30T09:00:00');
-    expect(validate(start, kst('2027-02-28T09:00:00'), NOW)).toEqual({});
-    expect(validate(start, kst('2027-02-28T09:00:01'), NOW)).toEqual({
-      endAt: '게시 기간은 최대 3개월입니다.',
+  it.each([
+    ['2026-11-30T09:00:00', '2026-12-30T09:00:00'],
+    ['2027-01-31T09:00:00', '2027-03-02T09:00:00'],
+    ['2028-02-01T09:00:00', '2028-03-02T09:00:00'],
+  ])('월 길이와 무관하게 %s부터 정확히 30일까지 받는다', (from, to) => {
+    const start = kst(from);
+    const end = kst(to);
+    expect(validate(start, end, NOW)).toEqual({});
+    expect(validate(start, new Date(end.getTime() + 1), NOW)).toEqual({
+      endAt: '게시 기간은 최대 30일입니다.',
     });
   });
 });

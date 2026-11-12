@@ -38,8 +38,8 @@ export const SIGNAGE_POLICY = {
   maxVideoDurationSeconds: 30,
   /** 제목 최대 글자 수(앞뒤 공백 제외) */
   titleMaxLength: 80,
-  /** 최대 게시 기간(개월, Asia/Seoul 달력 기준) */
-  maxPublishMonths: 3,
+  /** 포스터 최대 게시 기간(일, 시작 시각부터 24시간 단위) */
+  maxPublishDays: 30,
   /** 이벤트 배너의 최대 게시 일수. 서울 자정부터 자정까지 센다 */
   eventBannerMaxDays: 3,
   /** 소식 제보의 게시 일수. 승인한 순간부터 센다 */
