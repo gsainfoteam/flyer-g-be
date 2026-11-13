@@ -263,8 +263,22 @@ describe('게시 신청 (e2e)', () => {
       expect(rest.body.fields).toEqual({
         categoryId: '선택할 수 없는 카테고리입니다.',
         detailUrl: 'https:// 로 시작하는 주소만 쓸 수 있습니다.',
-        endAt: '게시 기간은 최대 3개월입니다.',
+        endAt: '게시 기간은 최대 30일입니다.',
         targetGroupIds: `선택할 수 없는 대상 위치가 있습니다: ${hiddenGroupId}`,
+      });
+    });
+
+    it('정확히 30일은 허용하고 1밀리초라도 넘으면 거절한다', async () => {
+      const startAt = fromNow(48 * HOUR);
+      const end = Date.parse(startAt) + 30 * 24 * HOUR;
+      await create(
+        validBody({ startAt, endAt: new Date(end).toISOString() }),
+      ).expect(201);
+      const res = await create(
+        validBody({ startAt, endAt: new Date(end + 1).toISOString() }),
+      ).expect(422);
+      expect(res.body.fields).toEqual({
+        endAt: '게시 기간은 최대 30일입니다.',
       });
     });
 
@@ -501,7 +515,7 @@ describe('게시 신청 (e2e)', () => {
   describe('수정', () => {
     async function fresh() {
       const res = await create(validBody()).expect(201);
-      return res.body as { id: string; version: number };
+      return res.body as { id: string; version: number; startAt: string };
     }
 
     it('바뀐 필드만 반영하고 version을 올린다', async () => {
@@ -598,13 +612,13 @@ describe('게시 신청 (e2e)', () => {
     });
 
     it('기간을 바꾸면 규칙을 다시 검사한다', async () => {
-      const { id } = await fresh();
+      const { id, startAt } = await fresh();
       const res = await patch(id, {
         version: 1,
-        endAt: fromNow(200 * 24 * HOUR),
+        endAt: new Date(Date.parse(startAt) + 30 * 24 * HOUR + 1).toISOString(),
       }).expect(422);
       expect(res.body.fields).toEqual({
-        endAt: '게시 기간은 최대 3개월입니다.',
+        endAt: '게시 기간은 최대 30일입니다.',
       });
     });
 
@@ -619,6 +633,26 @@ describe('게시 신청 (e2e)', () => {
   });
 
   describe('재제출과 취소', () => {
+    it('기존 30일 초과 신청은 기간을 고쳐야 재제출할 수 있다', async () => {
+      const created = await create(validBody()).expect(201);
+      const { id, startAt } = created.body;
+      const end = Date.parse(startAt) + 30 * 24 * HOUR;
+      await setStatus(id, 'REJECTED', {
+        startAt: new Date(startAt),
+        endAt: new Date(end + 1),
+      });
+
+      const res = await action(id, 'submit', 1).expect(422);
+      expect(res.body.fields).toEqual({
+        endAt: '게시 기간은 최대 30일입니다.',
+      });
+      await patch(id, {
+        version: 1,
+        endAt: new Date(end).toISOString(),
+      }).expect(200);
+      await action(id, 'submit', 2).expect(200);
+    });
+
     it('반려된 신청을 고쳐 다시 검토 요청한다', async () => {
       const created = await create(validBody()).expect(201);
       const { id } = created.body;

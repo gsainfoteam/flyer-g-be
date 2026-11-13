@@ -20,10 +20,10 @@ export class SignageConfigDto {
 
   @ApiProperty({
     description:
-      '최대 게시 기간(개월). 종료 시각은 시작 시각에서 이 개월 수를 더한 시각(Asia/Seoul 달력 기준) 이하여야 한다',
-    example: 3,
+      '포스터 최대 게시 기간(일). 종료 시각은 시작 시각에서 이 일수(1일 = 24시간)를 더한 시각 이하여야 한다',
+    example: 30,
   })
-  maxPublishMonths: number;
+  maxPublishDays: number;
 
   @ApiProperty({
     description:

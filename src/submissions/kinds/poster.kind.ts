@@ -1,5 +1,4 @@
 import type { FieldErrors } from '../../common/errors/app.exception.js';
-import { addMonthsInSeoul } from '../../common/time/seoul-time.js';
 import { SIGNAGE_POLICY } from '../../policy/signage-policy.js';
 import { parseDetailUrl, validatePeriod } from '../submission-rules.js';
 import { checkMediaAsset, type MediaProblem } from './media-asset.js';
@@ -12,6 +11,8 @@ import {
   type SubmissionKind,
 } from './submission-kind.js';
 
+const DAY_MS = 86_400_000;
+
 const ASSET_MESSAGES: Record<MediaProblem, string> = {
   UPLOADING: '포스터 업로드가 끝나지 않았습니다.',
   PROCESSING: '영상 변환이 끝나지 않았습니다. 잠시 후 다시 시도해주세요.',
@@ -20,7 +21,7 @@ const ASSET_MESSAGES: Record<MediaProblem, string> = {
 };
 
 /**
- * 포스터(이미지·영상). 신청자가 기간을 정하고, 최대 maxPublishMonths개월이다.
+ * 포스터(이미지·영상). 신청자가 기간을 정하고, 최대 maxPublishDays일이다.
  * 포스터의 필드는 모두 submissions 컬럼에 있다(공지 하나에 신청 하나를 DB가 지키는 부분 unique index 때문).
  */
 export const POSTER_KIND: SubmissionKind<null> = {
@@ -41,12 +42,12 @@ export const POSTER_KIND: SubmissionKind<null> = {
     mode: 'REQUESTED',
     validate(startAt, endAt, now) {
       const errors = validatePeriod(startAt, endAt, now);
-      const { maxPublishMonths } = SIGNAGE_POLICY;
+      const { maxPublishDays } = SIGNAGE_POLICY;
       if (
         !errors.endAt &&
-        endAt > addMonthsInSeoul(startAt, maxPublishMonths)
+        endAt.getTime() - startAt.getTime() > maxPublishDays * DAY_MS
       ) {
-        errors.endAt = `게시 기간은 최대 ${maxPublishMonths}개월입니다.`;
+        errors.endAt = `게시 기간은 최대 ${maxPublishDays}일입니다.`;
       }
       return errors;
     },

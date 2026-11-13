@@ -133,7 +133,7 @@ describe('참조 데이터와 운영 설정 (e2e)', () => {
       maxVideoUploadBytes: 104857600,
       maxVideoDurationSeconds: 30,
       titleMaxLength: 80,
-      maxPublishMonths: 3,
+      maxPublishDays: 30,
       eventBannerMaxDays: 3,
       storyDisplayDays: 2,
       // 24시간 전 신청 규칙은 없어졌다. 필드는 정리 배포까지 0으로 남는다
