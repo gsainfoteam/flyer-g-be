@@ -54,6 +54,79 @@ describe('validateEnv — 슬랙 알림', () => {
   });
 });
 
+describe('validateEnv — 승인 리마인드 메일', () => {
+  it('앱 비밀번호의 표시용 공백을 제거하고 공백뿐인 값은 미설정으로 본다', () => {
+    const password = fakeSecret();
+    expect(
+      validateEnv({
+        ...base,
+        MAIL_APP_PASSWORD: password.match(/.{1,4}/g)!.join(' '),
+      }).MAIL_APP_PASSWORD,
+    ).toBe(password);
+    expect(
+      validateEnv({ ...base, MAIL_APP_PASSWORD: '   ' }).MAIL_APP_PASSWORD,
+    ).toBeUndefined();
+    expect(() =>
+      validateEnv({
+        ...base,
+        MAIL_REVIEW_REMINDERS_ENABLED: 'true',
+        MAIL_USER: 'sender@example.com',
+        MAIL_APP_PASSWORD: '   ',
+      }),
+    ).toThrow(/MAIL_APP_PASSWORD/);
+  });
+  it('기본은 비활성화이며 하우스 관리자 주소를 사용한다', () => {
+    const env = validateEnv(base);
+    expect(env.MAIL_REVIEW_REMINDERS_ENABLED).toBe(false);
+    expect(env.MAIL_REVIEW_REMINDER_TO).toBe('admin@gist-house.org');
+    expect(env.MAIL_FROM_NAME).toBe('Flyer G');
+  });
+  it('활성화하면 발신 계정과 앱 비밀번호가 모두 필요하다', () => {
+    for (const credentials of [
+      {},
+      { MAIL_USER: 'sender@example.com' },
+      { MAIL_APP_PASSWORD: fakeSecret() },
+    ]) {
+      expect(() =>
+        validateEnv({
+          ...base,
+          ...credentials,
+          MAIL_REVIEW_REMINDERS_ENABLED: 'true',
+        }),
+      ).toThrow(/MAIL_/);
+    }
+    expect(
+      validateEnv({
+        ...base,
+        MAIL_REVIEW_REMINDERS_ENABLED: 'true',
+        MAIL_USER: 'sender@example.com',
+        MAIL_APP_PASSWORD: fakeSecret(),
+      }).MAIL_REVIEW_REMINDERS_ENABLED,
+    ).toBe(true);
+  });
+  it.each(['MAIL_USER', 'MAIL_FROM_ADDRESS', 'MAIL_REVIEW_REMINDER_TO'])(
+    '%s의 잘못된 주소를 거절한다',
+    (key) => {
+      expect(() => validateEnv({ ...base, [key]: 'invalid-address' })).toThrow(
+        new RegExp(key),
+      );
+    },
+  );
+  it('오류에 비밀번호 원문을 노출하지 않는다', () => {
+    const secret = fakeSecret();
+    try {
+      validateEnv({
+        ...base,
+        MAIL_REVIEW_REMINDERS_ENABLED: 'true',
+        MAIL_APP_PASSWORD: secret,
+      });
+      expect.fail('발신 계정이 없으면 실패해야 한다');
+    } catch (error) {
+      expect(String(error)).not.toContain(secret);
+    }
+  });
+});
+
 describe('validateEnv — Swagger 잠금', () => {
   it('둘 다 없으면 잠그지 않는다', () => {
     const env = validateEnv(base);

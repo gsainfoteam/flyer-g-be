@@ -122,6 +122,26 @@ const envSchema = z
       .default('true')
       .transform((v) => v === 'true'),
 
+    MAIL_USER: z.preprocess(unsetIfEmpty, z.email().optional()),
+    // Google이 네 글자씩 띄워 보여 주는 앱 비밀번호도 붙여 넣을 수 있다.
+    MAIL_APP_PASSWORD: z.preprocess(
+      (value) =>
+        typeof value === 'string'
+          ? unsetIfEmpty(value.replace(/\s/g, ''))
+          : value,
+      z.string().optional(),
+    ),
+    MAIL_FROM_NAME: z.string().trim().min(1).default('Flyer G'),
+    MAIL_FROM_ADDRESS: z.preprocess(unsetIfEmpty, z.email().optional()),
+    MAIL_REVIEW_REMINDER_TO: z.preprocess(
+      unsetIfEmpty,
+      z.email().default('admin@gist-house.org'),
+    ),
+    MAIL_REVIEW_REMINDERS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+
     // 영상 업로드를 받을지. TV 플레이어가 영상을 재생할 수 있게 된 환경부터 켠다.
     // 꺼져 있어도 이미 올라온 영상의 처리와 편성은 그대로 한다. 영상 변환에는 ffmpeg·ffprobe가 PATH에 있어야 한다.
     VIDEO_UPLOADS_ENABLED: z
@@ -132,6 +152,18 @@ const envSchema = z
     // 둘 다 설정하면 Swagger 문서(/docs)를 Basic Auth로 잠근다. 둘 다 비우면 공개.
     SWAGGER_USER: optionalString,
     SWAGGER_PASSWORD: optionalString,
+  })
+  .superRefine((env, ctx) => {
+    if (!env.MAIL_REVIEW_REMINDERS_ENABLED) return;
+    for (const key of ['MAIL_USER', 'MAIL_APP_PASSWORD'] as const) {
+      if (!env[key]?.trim()) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message: '메일 리마인드를 활성화하면 필수입니다',
+        });
+      }
+    }
   })
   // 하나만 설정하면 잠긴 줄 알고 문서가 공개된 채로 배포될 수 있으니 시작 시점에 막는다.
   .refine((env) => !env.SWAGGER_USER === !env.SWAGGER_PASSWORD, {

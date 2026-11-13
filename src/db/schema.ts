@@ -889,6 +889,37 @@ export const slackNotifications = pgTable(
   ],
 );
 
+/** 승인 리마인드 메일. 발송 슬롯과 수신 주소별로 한 번만 생성한다. */
+export const mailNotifications = pgTable(
+  'mail_notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    dedupeKey: varchar('dedupe_key', { length: 320 }).notNull().unique(),
+    recipient: varchar('recipient', { length: 254 }).notNull(),
+    subject: varchar('subject', { length: 255 }).notNull(),
+    text: varchar('text', { length: 4000 }).notNull(),
+    html: varchar('html', { length: 16000 }).notNull(),
+    status: varchar('status', { length: 16 })
+      .$type<'PENDING' | 'SENDING' | 'SENT' | 'FAILED' | 'CANCELED'>()
+      .notNull()
+      .default('PENDING'),
+    attempts: integer('attempts').notNull().default(0),
+    availableAt: timestamp('available_at', { withTimezone: true }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    lockedUntil: timestamp('locked_until', { withTimezone: true }),
+    claimToken: uuid('claim_token'),
+    lastError: varchar('last_error', { length: 128 }),
+    messageId: varchar('message_id', { length: 255 }),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('mail_notifications_pending_idx').on(table.status, table.availableAt),
+  ],
+);
+
 /** 웹훅 전체의 발송 리스와 속도 제한. 네트워크 대기 중에는 DB 잠금을 유지하지 않는다. */
 export const slackDeliveryState = pgTable('slack_delivery_state', {
   id: varchar('id', { length: 16 }).primaryKey(),

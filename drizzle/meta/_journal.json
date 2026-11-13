@@ -176,6 +176,13 @@
       "when": 1793946502536,
       "tag": "0024_slack_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794468339092,
+      "tag": "0025_review_reminder_mail",
+      "breakpoints": true
     }
   ]
 }

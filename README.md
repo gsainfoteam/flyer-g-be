@@ -63,7 +63,7 @@ $ npm run test:cov
 
 ### Slack notifications
 
-`SLACK_WEBHOOK_URL`에 Slack Incoming Webhook URL을 설정한다. 모든 알림은 같은 웹훅 채널로 보낸다. 웹훅이 비어 있으면 알림 생성·발송을 모두 건너뛴다. 실제 웹훅은 저장소에 넣지 않고 배포 환경의 Secret으로 관리한다.
+`SLACK_WEBHOOK_URL`에 Slack Incoming Webhook URL을 설정한다. 모든 슬랙 알림은 같은 웹훅 채널로 보낸다. 웹훅이 비어 있으면 슬랙 알림 생성·발송을 모두 건너뛴다. 실제 웹훅은 저장소에 넣지 않고 배포 환경의 Secret으로 관리한다.
 
 버튼 주소는 코드에 고정되어 있다. **기기 상태 확인하기**는 `https://flyer-g.gistory.me/tv`, **승인 요청 확인하기**는 `https://flyer-g.gistory.me/review`로 이동한다. 개발 환경에서도 같은 운영 화면을 연다. 기존 대기 알림도 발송 시 종류에 맞는 주소를 사용한다.
 
@@ -85,6 +85,31 @@ $ npm run test:cov
 앱 시작 시 `0024_slack_notifications` 마이그레이션이 자동 적용된다. 표시 정보가 없는 기존 대기 알림은 텍스트 형식으로 계속 발송한다. 배포 환경변수/Secret은 별도 GitOps 저장소에서 설정한다. 통합 테스트는 테스트 전용 PostgreSQL에서 실행하고, Slack 발송은 대체 객체로 검증한다.
 
 Webhook 설정과 응답 규약은 [Slack 공식 문서](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/), 속도 제한은 [Rate limits](https://docs.slack.dev/apis/web-api/rate-limits/)를 참고한다.
+
+### Approval reminder email
+
+하우스 관리자에게 슬랙과 같은 월~금 10:00·16:00(Asia/Seoul)에 승인 대기 현황을 보낸다. 동일한 작업에서 한 번 집계한 전체 `PENDING_REVIEW` 건수로 두 채널의 알림을 생성한다. 0건이면 생략하고, 남아 있으면 다음 회차에도 다시 보낸다. 공휴일은 별도 제외하지 않으며 예정 시각에 모든 서버가 중단되면 소급 생성하지 않는다.
+
+| 환경변수 | 기본값 | 용도 |
+| --- | --- | --- |
+| `MAIL_REVIEW_REMINDERS_ENABLED` | `false` | 발신 정보 설정 후 `true`로 활성화 |
+| `MAIL_USER` | 없음 | Gmail/Google Workspace 발송 계정 |
+| `MAIL_APP_PASSWORD` | 없음 | 발송 계정의 앱 비밀번호 (배포 Secret) |
+| `MAIL_FROM_NAME` | `Flyer G` | 발신자 표시 이름 |
+| `MAIL_FROM_ADDRESS` | `MAIL_USER` | 선택 발신 주소. 해당 계정에 등록된 발신 별칭이어야 함 |
+| `MAIL_REVIEW_REMINDER_TO` | `admin@gist-house.org` | 수신 주소 한 개 |
+
+메일이 활성화되면 발신 계정과 앱 비밀번호를 시작 시점에 검증하며, 앱 비밀번호의 표시용 공백은 제거한다. 발송은 `cheers-be`의 MailService와 같은 Gmail SMTP + Nodemailer 방식이다. 전역 `SCHEDULER_ENABLED`는 메일에도 적용되지만 슬랙 웹훅/기능 설정과는 독립적이다. 테스트는 메일 발송을 대체하며 실제 관리자에게 보내지 않는다.
+
+운영 발신자는 `MAIL_FROM_NAME="GIST 전단지"`, `MAIL_FROM_ADDRESS=flyer-g@gistory.me`로 설정한다. 그룹 주소는 로그인 계정이 아니므로 `MAIL_USER`에는 실제 Workspace 사용자 주소를 넣고, 그 계정의 Gmail에서 그룹 주소를 보내는 주소로 등록·인증한 뒤 해당 사용자 계정의 앱 비밀번호를 사용한다.
+
+제목은 `[Flyer G] 승인 대기 요청이 N건 있습니다`. HTML·일반 텍스트 본문에 종류별 건수, 가장 오래된 대기 시간과 집계 시각을 포함하고 **승인 요청 확인하기** 버튼은 `https://flyer-g.gistory.me/review`로 연결한다. 재시도에도 최초 집계 내용을 사용한다.
+
+앱 시작 시 `0025_review_reminder_mail` 마이그레이션을 적용한다. `mail_notifications`에 수신 주소·시간대별 고유 키와 발송 기록을 저장하고 5초마다 처리한다. 행 잠금과 120초 리스로 여러 파드의 동시 발송을 막고, DB 트랜잭션을 닫은 후 SMTP에 요청한다. 요청은 최대 60초로 제한한다. 네트워크/SMTP 4xx 오류는 1·2·4·8분 간격으로 총 5회까지 시도하고, SMTP 5xx/인증 실패는 즉시 실패 처리한다. 1시간 지난 미발송 알림과 수신 주소 설정이 변경된 옛 대기 알림은 취소한다.
+
+`status`, `attempts`, `last_error`, `sent_at`, `message_id`로 결과를 확인한다. `SENT`는 SMTP 서버가 수락했다는 의미이며 수신함 도착 보장은 아니다. SMTP 수락 직후 프로세스가 종료되거나 응답이 유실된 경우 중복 수신 가능성은 남는다. 재시도에는 같은 Message-ID를 사용하지만 수신 서버의 중복 제거를 보장하지 않는다. 로그에는 비밀번호나 SMTP 오류 원문을 남기지 않는다.
+
+SMTP 설정은 [Nodemailer 공식 문서](https://nodemailer.com/smtp)를 참고한다.
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 

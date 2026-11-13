@@ -11,11 +11,17 @@ import {
   deviceAlertStates,
   slackDeliveryState,
   slackNotifications,
+  mailNotifications,
   submissions,
   targetGroups,
 } from '../src/db/schema.js';
 import { DeviceOfflineAlertJob } from '../src/jobs/device-offline-alert.job.js';
 import { ReviewReminderJob } from '../src/jobs/review-reminder.job.js';
+import {
+  MailService,
+  MailDeliveryError,
+} from '../src/notifications/mail.service.js';
+import { MailDispatcher } from '../src/notifications/mail-dispatcher.service.js';
 import { SchedulerService } from '../src/jobs/scheduler.service.js';
 import { NotificationDispatcher } from '../src/notifications/notification-dispatcher.service.js';
 import type { NotificationMessage } from '../src/notifications/notification-presentation.js';
@@ -40,6 +46,12 @@ describe('슬랙 알림 (e2e)', () => {
   let deviceJob: DeviceOfflineAlertJob;
   let reviewJob: ReviewReminderJob;
   let dispatcher: NotificationDispatcher;
+  let mailDispatcher: MailDispatcher;
+  const mail = {
+    enabled: false,
+    recipient: 'admin@gist-house.org',
+    send: vi.fn(async () => {}),
+  };
   const now = new Date('2035-11-05T01:00:00Z'); // 월요일 10:00 KST
   const later = (seconds: number) => new Date(now.getTime() + seconds * 1000);
   const slack = {
@@ -52,6 +64,8 @@ describe('슬랙 알림 (e2e)', () => {
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(SlackNotificationService)
       .useValue(slack)
+      .overrideProvider(MailService)
+      .useValue(mail)
       .compile();
     app = module.createNestApplication();
     await app.init();
@@ -61,9 +75,12 @@ describe('슬랙 알림 (e2e)', () => {
     deviceJob = app.get(DeviceOfflineAlertJob);
     reviewJob = app.get(ReviewReminderJob);
     dispatcher = app.get(NotificationDispatcher);
+    mailDispatcher = app.get(MailDispatcher);
   });
 
   beforeEach(async () => {
+    mail.enabled = false;
+    mail.send.mockReset().mockResolvedValue(undefined);
     slack.enabled = true;
     slack.enabledFor.mockReset().mockReturnValue(true);
     slack.send.mockReset().mockResolvedValue(undefined);
@@ -87,6 +104,9 @@ describe('슬랙 알림 (e2e)', () => {
   });
 
   afterEach(async () => {
+    await db
+      .delete(mailNotifications)
+      .where(like(mailNotifications.dedupeKey, 'review:2035-%'));
     await db
       .delete(slackNotifications)
       .where(
@@ -606,6 +626,220 @@ describe('슬랙 알림 (e2e)', () => {
     expect(await reviewJob.run(now)).toBeNull();
     slack.enabled = false;
     expect(await dispatcher.run(now)).toBeNull();
+  });
+
+  async function queueReviewMail() {
+    mail.enabled = true;
+    await db.insert(submissions).values({
+      requesterId: user.user.id,
+      type: 'STORY',
+      title: '메일 테스트',
+      status: 'PENDING_REVIEW',
+      createdAt: later(-7200),
+      updatedAt: now,
+    });
+    await reviewJob.run(now);
+    return (await db.select().from(mailNotifications))[0];
+  }
+
+  it('슬랙과 메일은 같은 집계로 생성하고 동시·반복 실행에서 중복 생성하지 않는다', async () => {
+    await queueReviewMail();
+    await Promise.all([reviewJob.run(now), reviewJob.run(now)]);
+    await reviewJob.run(later(30));
+    const emails = await db.select().from(mailNotifications);
+    const [slackRow] = await db
+      .select()
+      .from(slackNotifications)
+      .where(like(slackNotifications.dedupeKey, 'review:2035-%'));
+    expect(emails).toHaveLength(1);
+    expect(emails[0].recipient).toBe('admin@gist-house.org');
+    expect(emails[0].text).toContain(slackRow.text);
+    expect(await reviewJob.run(later(6 * 3600))).toEqual({ queued: 2 });
+  });
+
+  it('슬랙 없이 메일만 보내고, 0건·주말·시간표 밖은 생략한다', async () => {
+    slack.enabledFor.mockReturnValue(false);
+    mail.enabled = true;
+    expect(await reviewJob.run(now)).toEqual({ queued: 0 });
+    await queueReviewMail();
+    expect(await reviewJob.run(new Date('2035-11-10T01:00:00Z'))).toBeNull();
+    expect(await reviewJob.run(later(3600))).toBeNull();
+    expect(await db.select().from(slackNotifications)).toHaveLength(0);
+    await mailDispatcher.run(now);
+    expect(mail.send).toHaveBeenCalledOnce();
+    expect(mail.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recipient: 'admin@gist-house.org',
+        subject: '[Flyer G] 승인 대기 요청이 1건 있습니다',
+      }),
+    );
+  });
+
+  it('메일 전송 중에는 다른 파드가 가져가지 않으며 DB 트랜잭션은 닫혀 있다', async () => {
+    const row = await queueReviewMail();
+    let finish!: () => void;
+    let started!: () => void;
+    const sending = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    mail.send.mockImplementationOnce(async () => {
+      started();
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    });
+    const inFlight = mailDispatcher.run(now);
+    await sending;
+    try {
+      expect(await mailDispatcher.run(later(5))).toBeNull();
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`set local lock_timeout = '100ms'`);
+        await tx.select().from(mailNotifications).for('update');
+      });
+    } finally {
+      finish();
+      await inFlight;
+    }
+    await mailDispatcher.run(later(10));
+    expect(mail.send).toHaveBeenCalledOnce();
+    expect(
+      (
+        await db
+          .select()
+          .from(mailNotifications)
+          .where(eq(mailNotifications.id, row.id))
+      )[0],
+    ).toMatchObject({ status: 'SENT', attempts: 1, claimToken: null });
+  });
+
+  it('메일 일시 실패는 백오프 후 재시도하고 슬랙 발송은 계속된다', async () => {
+    const row = await queueReviewMail();
+    mail.send.mockRejectedValueOnce(
+      new MailDeliveryError('MAIL_SMTP_451', true),
+    );
+    await mailDispatcher.run(now);
+    await dispatcher.run(now);
+    expect(slack.send).toHaveBeenCalledOnce();
+    expect(await mailDispatcher.run(later(30))).toBeNull();
+    const restarted = new MailDispatcher(db, mail as unknown as MailService);
+    await restarted.run(later(65));
+    expect(mail.send).toHaveBeenCalledTimes(2);
+    expect(
+      (
+        await db
+          .select()
+          .from(mailNotifications)
+          .where(eq(mailNotifications.id, row.id))
+      )[0],
+    ).toMatchObject({
+      status: 'SENT',
+      attempts: 2,
+      messageId: `<${row.id}@flyer-g.gistory.me>`,
+    });
+  });
+
+  it('슬랙 전송 실패가 메일 발송을 막지 않는다', async () => {
+    await queueReviewMail();
+    slack.send.mockRejectedValueOnce(
+      new SlackDeliveryError('SLACK_NETWORK_ERROR', true),
+    );
+    await dispatcher.run(now);
+    await mailDispatcher.run(now);
+    expect(mail.send).toHaveBeenCalledOnce();
+    expect((await db.select().from(mailNotifications))[0].status).toBe('SENT');
+  });
+
+  it.each([
+    [0, new MailDeliveryError('MAIL_SMTP_550', false)],
+    [4, new MailDeliveryError('MAIL_TRANSPORT_ERROR', true)],
+  ])(
+    '영구 오류나 마지막 시도 실패는 종료한다 (%s)',
+    async (attempts, error) => {
+      const row = await queueReviewMail();
+      await db
+        .update(mailNotifications)
+        .set({ attempts })
+        .where(eq(mailNotifications.id, row.id));
+      mail.send.mockRejectedValueOnce(error);
+      await mailDispatcher.run(now);
+      await mailDispatcher.run(later(1000));
+      expect(mail.send).toHaveBeenCalledOnce();
+      expect((await db.select().from(mailNotifications))[0]).toMatchObject({
+        status: 'FAILED',
+        attempts: attempts + 1,
+        lastError: error.code,
+      });
+    },
+  );
+
+  it('죽은 파드의 만료된 메일 리스를 회수한다', async () => {
+    const row = await queueReviewMail();
+    await db
+      .update(mailNotifications)
+      .set({
+        status: 'SENDING',
+        attempts: 1,
+        claimToken: randomUUID(),
+        lockedUntil: later(120),
+      })
+      .where(eq(mailNotifications.id, row.id));
+    expect(await mailDispatcher.run(later(119))).toBeNull();
+    await mailDispatcher.run(later(121));
+    expect(mail.send).toHaveBeenCalledOnce();
+    expect((await db.select().from(mailNotifications))[0]).toMatchObject({
+      status: 'SENT',
+      attempts: 2,
+    });
+  });
+
+  it('리스 소유권을 잃은 이전 작업은 새 결과를 덮어쓰지 않는다', async () => {
+    const row = await queueReviewMail();
+    mail.send.mockImplementationOnce(async () => {
+      await db
+        .update(mailNotifications)
+        .set({
+          claimToken: randomUUID(),
+          status: 'FAILED',
+          lastError: 'NEW_OWNER_RESULT',
+        })
+        .where(eq(mailNotifications.id, row.id));
+    });
+    expect(await mailDispatcher.run(now)).toBeNull();
+    expect((await db.select().from(mailNotifications))[0]).toMatchObject({
+      status: 'FAILED',
+      lastError: 'NEW_OWNER_RESULT',
+    });
+  });
+
+  it.each(['expired', 'recipient-changed', 'attempts-exhausted'])(
+    '%s 메일은 보내지 않는다',
+    async (reason) => {
+      const row = await queueReviewMail();
+      if (reason === 'recipient-changed')
+        await db
+          .update(mailNotifications)
+          .set({ recipient: 'old@example.com' })
+          .where(eq(mailNotifications.id, row.id));
+      if (reason === 'attempts-exhausted')
+        await db
+          .update(mailNotifications)
+          .set({ attempts: 5 })
+          .where(eq(mailNotifications.id, row.id));
+      await mailDispatcher.run(reason === 'expired' ? later(3600) : now);
+      expect(mail.send).not.toHaveBeenCalled();
+      expect((await db.select().from(mailNotifications))[0].status).toBe(
+        reason === 'attempts-exhausted' ? 'FAILED' : 'CANCELED',
+      );
+    },
+  );
+
+  it('메일 또는 전역 스케줄러를 끄면 전송하지 않는다', async () => {
+    await queueReviewMail();
+    await app.get(SchedulerService).dispatchMailNotifications();
+    expect(mail.send).not.toHaveBeenCalled();
+    mail.enabled = false;
+    expect(await mailDispatcher.run(now)).toBeNull();
+    expect(mail.send).not.toHaveBeenCalled();
   });
 
   it('실제 cron 등록도 한국 시간 평일 10시·16시를 따른다', () => {
