@@ -13,6 +13,7 @@ import { SubmissionStatusJob } from './submission-status.job.js';
 import { DeviceOfflineAlertJob } from './device-offline-alert.job.js';
 import { ReviewReminderJob } from './review-reminder.job.js';
 import { NotificationDispatcher } from '../notifications/notification-dispatcher.service.js';
+import { MailDispatcher } from '../notifications/mail-dispatcher.service.js';
 
 /**
  * 주기 작업의 시간표. 작업 내용은 각 Job 클래스에 있고, 여기서는 켜져 있는지 확인하고 부르기만 한다.
@@ -35,6 +36,7 @@ export class SchedulerService {
     private readonly deviceOfflineAlert: DeviceOfflineAlertJob,
     private readonly reviewReminder: ReviewReminderJob,
     private readonly notificationDispatcher: NotificationDispatcher,
+    private readonly mailDispatcher: MailDispatcher,
   ) {
     this.enabled = config.get('SCHEDULER_ENABLED', { infer: true });
   }
@@ -69,6 +71,14 @@ export class SchedulerService {
     await this.runJob('slack-notifications', () =>
       this.notificationDispatcher.run(),
     );
+  }
+
+  @Cron(CronExpression.EVERY_5_SECONDS, {
+    name: 'mail-notifications',
+    waitForCompletion: true,
+  })
+  async dispatchMailNotifications(): Promise<void> {
+    await this.runJob('mail-notifications', () => this.mailDispatcher.run());
   }
 
   @Cron(CronExpression.EVERY_HOUR, { name: 'asset-cleanup' })
