@@ -94,7 +94,7 @@ describe('슬랙 알림 (e2e)', () => {
         tokenIssuedAt: later(-3600),
         createdAt: later(-3600),
         updatedAt: later(-3600),
-        lastSeenAt: later(-120),
+        lastSeenAt: later(-300),
       })
       .returning();
     deviceId = device.id;
@@ -166,6 +166,28 @@ describe('슬랙 알림 (e2e)', () => {
   const sentKinds = () =>
     slack.send.mock.calls.map(([message]) => message.kind);
 
+  it('5분 직전에는 알리지 않고 정확히 5분부터 한 번만 전송한다', async () => {
+    await heartbeatAt(0);
+    await deviceJob.run(later(299.999));
+    expect(await notifications()).toHaveLength(0);
+    await deviceJob.run(later(300));
+    await dispatcher.run(later(300));
+    await deviceJob.run(later(360));
+    await dispatcher.run(later(360));
+    expect(await notifications()).toHaveLength(1);
+    expect(sentKinds()).toEqual(['DEVICE_OFFLINE']);
+  });
+
+  it('5분 안에 다시 연결되면 장애와 복구 알림을 모두 생략한다', async () => {
+    await heartbeatAt(0);
+    await deviceJob.run(later(120));
+    await heartbeatAt(240);
+    await deviceJob.run(later(240));
+    await dispatcher.run(later(240));
+    expect(await notifications()).toHaveLength(0);
+    expect(slack.send).not.toHaveBeenCalled();
+  });
+
   it('장애 전송 후 재접속은 한 번만 알리고 재시작·동시 점검에도 반복하지 않는다', async () => {
     await deviceJob.run(now);
     await dispatcher.run(now);
@@ -209,8 +231,8 @@ describe('슬랙 알림 (e2e)', () => {
     await heartbeatAt(0);
     await deviceJob.run(now);
     expect(await notifications()).toHaveLength(0);
-    await deviceJob.run(later(120));
-    await dispatcher.run(later(120));
+    await deviceJob.run(later(300));
+    await dispatcher.run(later(300));
     await db
       .update(devices)
       .set({
@@ -220,11 +242,11 @@ describe('슬랙 알림 (e2e)', () => {
         },
       })
       .where(eq(devices.id, deviceId));
-    await deviceJob.run(later(180));
+    await deviceJob.run(later(360));
     expect(await notifications()).toHaveLength(1);
-    await heartbeatAt(190);
-    await deviceJob.run(later(210));
-    await dispatcher.run(later(210));
+    await heartbeatAt(370);
+    await deviceJob.run(later(390));
+    await dispatcher.run(later(390));
     expect(sentKinds()).toEqual(['DEVICE_OFFLINE', 'DEVICE_RECOVERED']);
   });
 
@@ -314,11 +336,11 @@ describe('슬랙 알림 (e2e)', () => {
       .update(slackNotifications)
       .set({ availableAt: later(600) })
       .where(eq(slackNotifications.id, recovery.id));
-    await deviceJob.run(later(180));
-    await dispatcher.run(later(180));
-    await heartbeatAt(200);
-    await deviceJob.run(later(210));
-    await dispatcher.run(later(210));
+    await deviceJob.run(later(330));
+    await dispatcher.run(later(330));
+    await heartbeatAt(350);
+    await deviceJob.run(later(360));
+    await dispatcher.run(later(360));
     await heartbeatAt(590);
     await deviceJob.run(later(600));
     await dispatcher.run(later(600));
@@ -393,9 +415,9 @@ describe('슬랙 알림 (e2e)', () => {
     expect(slack.send).not.toHaveBeenCalled();
     expect((await notifications())[0].status).toBe('CANCELED');
     await deviceJob.run(later(60));
-    await deviceJob.run(later(180));
+    await deviceJob.run(later(330));
     expect(await notifications()).toHaveLength(2);
-    await dispatcher.run(later(180));
+    await dispatcher.run(later(330));
     expect(slack.send).toHaveBeenCalledTimes(1);
   });
 
@@ -407,7 +429,7 @@ describe('슬랙 알림 (e2e)', () => {
     await deviceJob.run(now);
     await db
       .update(devices)
-      .set({ lastSeenAt: later(-120), isActive: false })
+      .set({ lastSeenAt: later(-300), isActive: false })
       .where(eq(devices.id, deviceId));
     await deviceJob.run(later(1));
     await db
