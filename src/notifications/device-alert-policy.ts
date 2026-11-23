@@ -9,6 +9,19 @@ import { isQuietAt } from '../lineups/quiet-hours.js';
 
 type AlertState = typeof deviceAlertStates.$inferSelect;
 
+const OFFLINE_ALERT_AFTER_MS = 5 * 60_000;
+
+/** 관리자 화면의 상태와 별개로, 5분 이상 heartbeat가 없을 때만 장애를 알린다. */
+function isHeartbeatOverdueForAlert(
+  device: Pick<Device, 'lastSeenAt'>,
+  now: Date,
+): boolean {
+  return (
+    device.lastSeenAt !== null &&
+    now.getTime() - device.lastSeenAt.getTime() >= OFFLINE_ALERT_AFTER_MS
+  );
+}
+
 /** 최근 90초 사이 화면 끔 시간이 있었는가. 스케줄러가 잠들어 있었어도 기동 유예를 준다. */
 function recentlySleeping(settings: LineupSettings, now: Date): boolean {
   for (let offset = 0; offset <= ONLINE_WITHIN_MS; offset += 30_000) {
@@ -66,7 +79,7 @@ export function evaluateDeviceAlert(
     },
     shouldAlert:
       status === 'OFFLINE' &&
-      !!device.lastSeenAt &&
+      isHeartbeatOverdueForAlert(device, now) &&
       !incidentId &&
       now >= graceUntil &&
       !recentlySleeping(settings, now) &&

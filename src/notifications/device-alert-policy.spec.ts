@@ -8,20 +8,42 @@ const ago = (seconds: number) => new Date(now.getTime() - seconds * 1000);
 const device = {
   id: randomUUID(),
   isActive: true,
-  lastSeenAt: ago(91),
+  lastSeenAt: ago(300),
   updatedAt: ago(3600),
 };
 const settings = DEFAULT_LINEUP_SETTINGS;
 
 describe('TV 장애 판정', () => {
-  it('90초 경계를 관리자 화면과 공유한다', () => {
+  it('화면은 90초 기준으로 표시하되 5분 미만의 미수신은 알리지 않는다', () => {
     expect(
       deviceStatusOf({ ...device, lastSeenAt: ago(90) }, settings, now),
     ).toBe('ONLINE');
-    expect(deviceStatusOf(device, settings, now)).toBe('OFFLINE');
     expect(
-      evaluateDeviceAlert(device, settings, undefined, now).shouldAlert,
-    ).toBe(true);
+      deviceStatusOf({ ...device, lastSeenAt: ago(91) }, settings, now),
+    ).toBe('OFFLINE');
+    expect(
+      evaluateDeviceAlert(
+        { ...device, lastSeenAt: ago(91) },
+        settings,
+        undefined,
+        now,
+      ).shouldAlert,
+    ).toBe(false);
+  });
+
+  it.each([
+    [299.999, false],
+    [300, true],
+    [301, true],
+  ])('%s초 미수신 경계에서 알림 여부는 %s', (seconds, expected) => {
+    expect(
+      evaluateDeviceAlert(
+        { ...device, lastSeenAt: ago(seconds) },
+        settings,
+        undefined,
+        now,
+      ).shouldAlert,
+    ).toBe(expected);
   });
 
   it('미접속·비활성·화면 끔 시간에는 알리지 않는다', () => {
@@ -111,7 +133,7 @@ describe('TV 장애 판정', () => {
     expect(
       evaluateDeviceAlert(device, settings, previous, now).shouldAlert,
     ).toBe(false);
-    const nextTime = new Date(now.getTime() + 180_000);
+    const nextTime = new Date(now.getTime() + 330_000);
     const recoveredThenOffline = {
       ...device,
       lastSeenAt: new Date(now.getTime() + 30_000),
